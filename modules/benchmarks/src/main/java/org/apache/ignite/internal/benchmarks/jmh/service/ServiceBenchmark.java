@@ -17,6 +17,7 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.infra.Blackhole;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
@@ -33,18 +34,18 @@ public class ServiceBenchmark extends JmhAbstractBenchmark implements Invocation
     private TestService test;
 
     @Benchmark
-    public void directReference() throws Exception {
-        local.handleVal(5);
+    public void directReference(Blackhole blackhole) throws Exception {
+        blackhole.consume(local.value(1+randomInt(Integer.MAX_VALUE)));
     }
 
     @Benchmark
-    public void testProxt() throws Exception {
-        test.handleVal(5);
+    public void testProxy(Blackhole blackhole) throws Exception {
+        blackhole.consume(test.value(1+randomInt(Integer.MAX_VALUE)));
     }
 
     @Benchmark
-    public void serviceProxy() throws Exception {
-        proxy.handleVal(5);
+    public void serviceProxy(Blackhole blackhole) throws Exception {
+        blackhole.consume(proxy.value(1+randomInt(Integer.MAX_VALUE)));
     }
 
     @Setup
@@ -85,8 +86,8 @@ public class ServiceBenchmark extends JmhAbstractBenchmark implements Invocation
             .include(ServiceBenchmark.class.getSimpleName())
             .threads(1)
             .forks(1)
-            .warmupIterations(10)
-            .measurementIterations(5)
+            .warmupIterations(5)
+            .measurementIterations(3)
             .jvmArgs("-Xms1g", "-Xmx1g")
             .build();
 
@@ -98,7 +99,7 @@ public class ServiceBenchmark extends JmhAbstractBenchmark implements Invocation
     }
 
     protected interface TestService {
-        default int handleVal(int value){ return value; }
+        default int value(int arg){ return randomInt(arg); };
     }
 
     protected static class TestServiceImpl implements Service, TestService {

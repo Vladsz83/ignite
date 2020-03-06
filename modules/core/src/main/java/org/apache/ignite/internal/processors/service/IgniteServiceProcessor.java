@@ -28,7 +28,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
@@ -118,6 +117,8 @@ import static org.apache.ignite.internal.util.IgniteUtils.getInterfaces;
 @SkipDaemon
 @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
 public class IgniteServiceProcessor extends ServiceProcessorAdapter implements IgniteChangeGlobalStateSupport {
+    private HistogramMetricImpl HISTOGRAM;
+
     /** */
     public static final String SVCS_VIEW = "services";
 
@@ -221,6 +222,10 @@ public class IgniteServiceProcessor extends ServiceProcessorAdapter implements I
             new ServiceViewWalker(),
             registeredServices.values(),
             ServiceView::new);
+
+
+            HISTOGRAM = ctx.metric().registry(SERVICE_METRIC_REGISTRY).histogram("test", DEFAULT_INVOCATION_BOUNDS, "dg") ;
+
     }
 
     /** {@inheritDoc} */
@@ -1936,8 +1941,11 @@ public class IgniteServiceProcessor extends ServiceProcessorAdapter implements I
      * @return Histogram for {@code srvcName} and {@code mtd} or {@code null} if not found.
      */
     HistogramMetricImpl histogram(String srvcName, Method mtd) {
-        MethodHistogramHolder histogramHolder = Optional.ofNullable(invocationHistograms.get(srvcName))
-            .orElse(Collections.emptyMap()).get(mtd.getName());
+//        if(true) return HISTOGRAM;
+
+        Map<String, MethodHistogramHolder> histogramByMtd = invocationHistograms.get(srvcName);
+
+        MethodHistogramHolder histogramHolder = histogramByMtd == null ? null : histogramByMtd.get(mtd.getName());
 
         return histogramHolder == null ? null : histogramHolder.getHistogram(mtd);
     }
