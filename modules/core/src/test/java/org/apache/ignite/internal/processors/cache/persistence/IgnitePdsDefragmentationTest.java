@@ -45,6 +45,7 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteState;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.IgnitionListener;
+import org.apache.ignite.cache.affinity.AffinityFunction;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.cluster.ClusterState;
 import org.apache.ignite.configuration.CacheConfiguration;
@@ -56,12 +57,22 @@ import org.apache.ignite.failure.StopNodeFailureHandler;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
 import org.apache.ignite.internal.maintenance.MaintenanceFileStore;
+import org.apache.ignite.internal.pagemem.PageMemory;
 import org.apache.ignite.internal.pagemem.store.PageStoreCollection;
 import org.apache.ignite.internal.processors.cache.CacheGroupContext;
+import org.apache.ignite.internal.processors.cache.IgniteCacheOffheapManager;
+import org.apache.ignite.internal.processors.cache.IgniteCacheProxyImpl;
+import org.apache.ignite.internal.processors.cache.distributed.dht.topology.GridDhtLocalPartition;
 import org.apache.ignite.internal.processors.cache.persistence.defragmentation.DefragmentationFileUtils;
+import org.apache.ignite.internal.processors.cache.persistence.defragmentation.TreeIterator;
 import org.apache.ignite.internal.processors.cache.persistence.file.FileIOFactory;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStore;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStoreManager;
+import org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryEx;
+import org.apache.ignite.internal.processors.cache.persistence.tree.io.BPlusMetaIO;
+import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
+import org.apache.ignite.internal.processors.cache.tree.CacheIdAwareDataLeafIO;
+import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.lang.IgniteThrowableConsumer;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.maintenance.MaintenanceRegistry;
@@ -148,6 +159,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         DataStorageConfiguration dsCfg = new DataStorageConfiguration();
         dsCfg.setWalSegmentSize(4 * 1024 * 1024);
+        dsCfg.setPageSize(1024);
 
         dsCfg.setDefaultDataRegionConfiguration(
             new DataRegionConfiguration()
@@ -172,6 +184,108 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         cfg.setCacheConfiguration(cache1Cfg, cache2Cfg);
 
         return cfg;
+    }
+
+    /**
+     * Basic test scenario. Does following steps:
+     *  - Start node;
+     *  - Fill cache;
+     *  - Remove part of data;
+     *  - Stop node;
+     *  - Start node in defragmentation mode;
+     *  - Stop node;
+     *  - Start node;
+     *  - Check that partitions became smaller;
+     *  - Check that cache is accessible and works just fine.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testSuccessfulDefragmentation2() throws Exception {
+        IgniteEx ig = startGrid(0);
+
+        ig.cluster().state(ClusterState.ACTIVE);
+
+        CacheConfiguration<Integer, byte[]> cacheConfiguration = new CacheConfiguration<>(CACHE_2_NAME);
+
+        AffinityFunction affFunction = new RendezvousAffinityFunction(false, 10);
+
+        cacheConfiguration.setAffinity(affFunction);
+
+        IgniteCache<Integer, byte[]> cache = ig.getOrCreateCache(cacheConfiguration);
+
+        final byte[] data = new byte[1];
+        final int dataCnt = 500_000;
+
+        for (int i = 0; i < dataCnt; i++)
+            cache.put(i, data);
+
+        //forceCheckpoint(ig);
+
+        //TreeIterator treeIter = new TreeIterator(ig.configuration().getDataStorageConfiguration().getPageSize());
+
+        IgniteCacheProxyImpl<Integer, byte[]> cacheImpl = IgniteUtils.field(cache, "delegate");
+
+        for (int partNum = 0; partNum < cacheImpl.context().topology().partitions(); partNum++) {
+            GridDhtLocalPartition part = cacheImpl.context().topology().localPartition(partNum);
+//            IgniteCacheOffheapManager.CacheDataStore dataStore = cacheImpl.context().offheap().dataStore(partition);
+
+            iterate(part);
+
+//            treeIter.iterate(dataStore.tree(), (PageMemoryEx)partition.group().dataRegion().pageMemory(),
+//                (tree0, io, pageAddr, idx) -> {
+//                    System.err.println("TEST | treeIter.iterate : pageAddr==" + pageAddr + ", itemIdx==" + idx +
+//                        ", io==" + io);
+//
+//                    CacheIdAwareDataLeafIO dataIO = (CacheIdAwareDataLeafIO)io;
+//
+//                    return true;
+//                });
+        }
+
+        for (IgniteCacheOffheapManager.CacheDataStore dataStore : cacheImpl.context().offheap().cacheDataStores()) {
+
+        }
+        //cache.cacheG
+
+//        treeIter.iterate();
+//
+//        cache.
+
+    }
+
+    /** */
+    private void iterate(GridDhtLocalPartition partition) throws IgniteCheckedException {
+        IgniteCacheOffheapManager.CacheDataStore partDataStore = partition.group().offheap().dataStore(partition);
+        CacheGroupContext cacheGrp = partition.group();
+        PageMemoryEx partPageMem = (PageMemoryEx)cacheGrp.dataRegion().pageMemory();
+        long metaPageId = partDataStore.tree().getMetaPageId();
+        long metaPage = partPageMem.acquirePage(cacheGrp.groupId(), metaPageId);
+
+        try {
+            long metaPageAddr = partPageMem.readLock(cacheGrp.groupId(), metaPageId, metaPage);
+
+            try {
+                BPlusMetaIO metaIO = PageIO.getPageIO(metaPageAddr);
+
+                long rootLvl = metaIO.getRootLevel(metaPageAddr);
+                long lvlCnt = metaIO.getLevelsCount(metaPageAddr);
+
+                for (int lvl = 0; lvl < lvlCnt; lvl++) {
+                    long firstPageId = metaIO.getFirstPageId(metaPageAddr, lvl);
+
+                   // PageIO pageIO = PageIO.getPageIO()
+                }
+
+                //return metaIO.getFirstPageId(metaPageAddr, 0);
+            }
+            finally {
+                partPageMem.readUnlock(cacheGrp.groupId(), metaPageId, metaPageId);
+            }
+        }
+        finally {
+            partPageMem.releasePage(cacheGrp.groupId(), metaPageId, metaPageId);
+        }
     }
 
     /**
