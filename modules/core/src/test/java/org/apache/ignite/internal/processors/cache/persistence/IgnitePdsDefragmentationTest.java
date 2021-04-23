@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.cache.persistence;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
@@ -219,10 +220,10 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         final float supposedRegionMetaPercent = 0.03f;
 
         final int cycles = 10;
-        final int partCnt = 2048;
+        final int partCnt = 1024;
 
-        final long maxRegionSize = 1024 * IgniteUtils.MB;
-//        final long maxRegionSize = 100 * 1024L * 1024L;
+//        final long maxRegionSize = 1024 * IgniteUtils.MB;
+        final long maxRegionSize = 512 * 1024L * 1024L;
         final int pageSize = 4 * 1024;
 
         final int minDataSize = 2 * 1024;
@@ -234,17 +235,19 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
 //        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent))
 //            / (supposedDataExtraSize + new TheEpicData(false).dataSize()));
-        final int maxDataCnt = 18921;
+//        final int maxDataCnt = 18920;
+        final int maxDataCnt = 9450;
 
         final int transactionSize = 0;
 
         IgniteConfiguration cfg = getConfiguration();
 //        cfg.getDataStorageConfiguration().setWalMode(WALMode.NONE);
-        cfg.getDataStorageConfiguration().setWalSegmentSize(8 * (int)IgniteUtils.MB);
-        cfg.getDataStorageConfiguration().setWalSegments(8);
+        cfg.getDataStorageConfiguration().setWalSegmentSize(16 * (int)IgniteUtils.MB);
+        cfg.getDataStorageConfiguration().setWalSegments(32);
 //        cfg.getDataStorageConfiguration().setWalBufferSize(8 * (int)IgniteUtils.MB);
 //        cfg.getDataStorageConfiguration().setWalCompactionEnabled(false);
-        cfg.getDataStorageConfiguration().setMaxWalArchiveSize(64 * IgniteUtils.MB);
+        cfg.getDataStorageConfiguration().setMaxWalArchiveSize(512 * IgniteUtils.MB);
+//        cfg.getDataStorageConfiguration().setWalArchivePath(cfg.getDataStorageConfiguration().getWalPath());
         cfg.getDataStorageConfiguration().setCheckpointFrequency(2000);
 
         cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setMaxSize(maxRegionSize);
@@ -256,13 +259,13 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         ig.cluster().state(ClusterState.ACTIVE);
 
-        CacheConfiguration<Integer, Object> cacheCfg = new CacheConfiguration<>("defragCache");
+        CacheConfiguration<Integer, TheEpicData> cacheCfg = new CacheConfiguration<>("defragCache");
         cacheCfg.setAtomicityMode(transactionSize > 0 ? TRANSACTIONAL : ATOMIC);
         AffinityFunction affFunction = new RendezvousAffinityFunction(false, partCnt);
         cacheCfg.setAffinity(affFunction);
-        cacheCfg.setIndexedTypes(TheEpicData.class, String.class);
+        cacheCfg.setIndexedTypes(TheEpicData.class, Integer.class);
 
-        IgniteCache<Integer, Object> cache = ig.getOrCreateCache(cacheCfg);
+        IgniteCache<Integer, TheEpicData> cache = ig.getOrCreateCache(cacheCfg);
 
         Transaction tx = null;
         int txCnt = 0;
@@ -300,7 +303,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 //                    byte[] data = new byte[dataSize];
 
                     try {
-                        TheEpicData data = new TheEpicData(false);
+                        TheEpicData data = new TheEpicData(keys.get(i), false);
                         cache.putIfAbsent(keys.get(i), data);
 
 //                        cache.putIfAbsent(keys.get(i), data);
@@ -919,7 +922,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
     }
 
     /** */
-    static final class TheEpicData {
+    static final class TheEpicData implements Serializable {
         /** */
         private long long1;
         /** */
@@ -933,8 +936,8 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         @QuerySqlField()
         private byte byte2;
         /** */
-        @QuerySqlField()
-        private int int1;
+        @QuerySqlField(index = true)
+        private int id;
         /** */
         @QuerySqlField()
         private int int2;
@@ -946,7 +949,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         @QuerySqlField()
         private String str2 = "abc657sdfgtgserygertjdrjfgj dfg53";
         /** */
-        @QuerySqlField(index=true)
+        @QuerySqlField()
         private String str3 = "abc657dfzhgdsfsgsdgsdfgsdfxc vjljoljp[i[ipoi[pasfojasdofiujoip3u5oijoijopzkjgbsg";
         /** */
         private byte[] raw1 = new byte[60];
@@ -958,7 +961,9 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         private byte[] raw4 = new byte[35_724];
 
         /** */
-        public TheEpicData(boolean randomize) {
+        public TheEpicData(int id, boolean randomize) {
+            this.id = id;
+
             if (randomize) {
                 Random rnd = new Random();
 
