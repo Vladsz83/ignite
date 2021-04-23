@@ -19,6 +19,8 @@ package org.apache.ignite.internal.processors.cache.persistence;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.lang.reflect.Field;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -27,13 +29,17 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.cache.configuration.Factory;
 import javax.cache.expiry.Duration;
@@ -47,6 +53,7 @@ import org.apache.ignite.Ignition;
 import org.apache.ignite.IgnitionListener;
 import org.apache.ignite.cache.affinity.AffinityFunction;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
+import org.apache.ignite.cache.query.annotations.QuerySqlField;
 import org.apache.ignite.cluster.ClusterState;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.DataRegionConfiguration;
@@ -56,6 +63,7 @@ import org.apache.ignite.failure.FailureHandler;
 import org.apache.ignite.failure.StopNodeFailureHandler;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
+import org.apache.ignite.internal.IgniteKernal;
 import org.apache.ignite.internal.maintenance.MaintenanceFileStore;
 import org.apache.ignite.internal.pagemem.PageMemory;
 import org.apache.ignite.internal.pagemem.store.PageStoreCollection;
@@ -64,22 +72,23 @@ import org.apache.ignite.internal.processors.cache.IgniteCacheOffheapManager;
 import org.apache.ignite.internal.processors.cache.IgniteCacheProxyImpl;
 import org.apache.ignite.internal.processors.cache.distributed.dht.topology.GridDhtLocalPartition;
 import org.apache.ignite.internal.processors.cache.persistence.defragmentation.DefragmentationFileUtils;
-import org.apache.ignite.internal.processors.cache.persistence.defragmentation.TreeIterator;
 import org.apache.ignite.internal.processors.cache.persistence.file.FileIOFactory;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStore;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStoreManager;
-import org.apache.ignite.internal.processors.cache.persistence.pagemem.PageMemoryEx;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.BPlusMetaIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
-import org.apache.ignite.internal.processors.cache.tree.CacheIdAwareDataLeafIO;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.lang.IgniteThrowableConsumer;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.maintenance.MaintenanceRegistry;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
+import org.apache.ignite.transactions.Transaction;
+import org.apache.ignite.transactions.TransactionConcurrency;
+import org.apache.ignite.transactions.TransactionIsolation;
 import org.junit.Test;
 
+import static org.apache.ignite.cache.CacheAtomicityMode.ATOMIC;
 import static org.apache.ignite.cache.CacheAtomicityMode.TRANSACTIONAL;
 import static org.apache.ignite.internal.pagemem.PageIdAllocator.INDEX_PARTITION;
 import static org.apache.ignite.internal.processors.cache.persistence.defragmentation.DefragmentationFileUtils.defragmentationCompletionMarkerFile;
@@ -159,7 +168,6 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         DataStorageConfiguration dsCfg = new DataStorageConfiguration();
         dsCfg.setWalSegmentSize(4 * 1024 * 1024);
-        dsCfg.setPageSize(1024);
 
         dsCfg.setDefaultDataRegionConfiguration(
             new DataRegionConfiguration()
@@ -186,6 +194,11 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         return cfg;
     }
 
+    /** {@inheritDoc} */
+    @Override protected long getTestTimeout() {
+        return Long.MAX_VALUE >> 1;
+    }
+
     /**
      * Basic test scenario. Does following steps:
      *  - Start node;
@@ -202,27 +215,165 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
      */
     @Test
     public void testSuccessfulDefragmentation2() throws Exception {
-        IgniteEx ig = startGrid(0);
+        final int supposedDataExtraSize = 68;
+        final float supposedRegionMetaPercent = 0.03f;
+
+        final int cycles = 10;
+        final int partCnt = 2048;
+
+        final long maxRegionSize = 1024 * IgniteUtils.MB;
+//        final long maxRegionSize = 100 * 1024L * 1024L;
+        final int pageSize = 4 * 1024;
+
+        final int minDataSize = 2 * 1024;
+        final int maxDataSize = 88 * 1024;
+
+//        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent))
+//            / (supposedDataExtraSize + maxDataSize));
+//        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent)) / supposedDataExtraSize);
+
+//        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent))
+//            / (supposedDataExtraSize + new TheEpicData(false).dataSize()));
+        final int maxDataCnt = 18921;
+
+        final int transactionSize = 0;
+
+        IgniteConfiguration cfg = getConfiguration();
+//        cfg.getDataStorageConfiguration().setWalMode(WALMode.NONE);
+        cfg.getDataStorageConfiguration().setWalSegmentSize(8 * (int)IgniteUtils.MB);
+        cfg.getDataStorageConfiguration().setWalSegments(8);
+//        cfg.getDataStorageConfiguration().setWalBufferSize(8 * (int)IgniteUtils.MB);
+//        cfg.getDataStorageConfiguration().setWalCompactionEnabled(false);
+        cfg.getDataStorageConfiguration().setMaxWalArchiveSize(64 * IgniteUtils.MB);
+        cfg.getDataStorageConfiguration().setCheckpointFrequency(2000);
+
+        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setMaxSize(maxRegionSize);
+        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setInitialSize(maxRegionSize);
+//        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setPersistenceEnabled(false);
+        cfg.getDataStorageConfiguration().setPageSize(pageSize);
+
+        IgniteEx ig = startGrid(cfg);
 
         ig.cluster().state(ClusterState.ACTIVE);
 
-        CacheConfiguration<Integer, byte[]> cacheConfiguration = new CacheConfiguration<>(CACHE_2_NAME);
+        CacheConfiguration<Integer, Object> cacheCfg = new CacheConfiguration<>("defragCache");
+        cacheCfg.setAtomicityMode(transactionSize > 0 ? TRANSACTIONAL : ATOMIC);
+        AffinityFunction affFunction = new RendezvousAffinityFunction(false, partCnt);
+        cacheCfg.setAffinity(affFunction);
+        cacheCfg.setIndexedTypes(TheEpicData.class, String.class);
 
-        AffinityFunction affFunction = new RendezvousAffinityFunction(false, 10);
+        IgniteCache<Integer, Object> cache = ig.getOrCreateCache(cacheCfg);
 
-        cacheConfiguration.setAffinity(affFunction);
+        Transaction tx = null;
+        int txCnt = 0;
+        final Random rnd = new Random();
 
-        IgniteCache<Integer, byte[]> cache = ig.getOrCreateCache(cacheConfiguration);
+        long totalLoad;
+        long recordsNum;
 
-        final byte[] data = new byte[1];
-        final int dataCnt = 500_000;
+        SortedSet<Long> loadSet = new TreeSet<>();
 
-        for (int i = 0; i < dataCnt; i++)
-            cache.put(i, data);
+        File writterF = new File(((IgniteKernal)ig).getIgniteHome() +"/results/defragTest.log");
+        writterF.delete();
+        writterF.createNewFile();
+
+        try (PrintWriter writter = new PrintWriter(writterF)){
+            for (int c = 0; c < cycles; ++c) {
+                writter.println("TEST | Cycle " + (c + 1) + " / " + cycles + " ...");
+                writter.flush();
+
+                totalLoad = 0;
+                recordsNum = 0;
+
+                List<Integer> keys = IntStream.range(0, maxDataCnt).boxed().collect(Collectors.toList());
+                Collections.shuffle(keys);
+
+                for (int i = 0; i < keys.size(); i++) {
+                    if (transactionSize > 0 && txCnt == 0)
+                        tx = ig.transactions().txStart(TransactionConcurrency.OPTIMISTIC, TransactionIsolation.READ_COMMITTED);
+
+//                    int dataSize = (c * 100) / cycles;
+//                    dataSize = minDataSize +
+//                        (maxDataSize-minDataSize) * (dataSize + rnd.nextInt(100 - dataSize)) / 100;
+//                    assert dataSize >= minDataSize && dataSize <= maxDataSize;
+//
+//                    byte[] data = new byte[dataSize];
+
+                    try {
+                        TheEpicData data = new TheEpicData(false);
+                        cache.putIfAbsent(keys.get(i), data);
+
+//                        cache.putIfAbsent(keys.get(i), data);
+                        int dataSize = data.dataSize();
+
+                        if (transactionSize > 0 && ++txCnt >= transactionSize) {
+                            txCnt = 0;
+                            tx.commit();
+                        }
+
+                        totalLoad += dataSize;
+                        ++recordsNum;
+
+                        loadSet.add(totalLoad);
+                    }
+                    catch (Exception e) {
+                        writter.println("TEST | Unable to put data: " + e.getMessage());
+                        break;
+                    }
+                }
+
+                if (txCnt > 0) {
+                    txCnt = 0;
+                    try {
+                        tx.commit();
+                    }
+                    catch (Exception ignored) {
+                        // No-op.
+                    }
+                }
+
+                if (cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().isPersistenceEnabled()) {
+                    forceCheckpoint(ig);
+
+                    File cacheDir = new File(cfg.getIgniteHome() + "/work/db/" +
+                        ig.name().replaceAll("\\.", "_") + "/cache-" + cacheCfg.getName());
+
+                    writter.println("TEST | Cycle " + (c + 1) + ". Load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
+                            "mb. Records: " + recordsNum + String.format(". Util.: %.1f", 100.0 * totalLoad / maxRegionSize) +
+//                    "%. Record size: " + data.length + ". Total load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
+                            "%. Total load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
+                            "mb. Persist. size: " + IgniteUtils.sizeInMegabytes(IgniteUtils.dirSize(cacheDir.toPath())) + "mb"
+                    );
+                }
+                else {
+                    writter.println("TEST | Cycle " + (c + 1) + ". Load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
+                            "mb. Records: " + recordsNum + String.format(". Util.: %.1f", 100.0 * totalLoad / maxRegionSize) +
+//                    "%. Record size: " + data.length + ". Total load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
+                            "%. Total load: " + IgniteUtils.sizeInMegabytes(totalLoad) + "mb"
+                    );
+                }
+
+                writter.flush();
+                System.gc();
+
+                Collections.shuffle(keys);
+                for (int k : keys) {
+                    if (rnd.nextInt(100) < 80)
+                        cache.remove(k);
+                }
+
+                System.gc();
+
+                writter.println("TEST | Finished cycle " + (c + 1));
+                writter.flush();
+            }
+        }
 
         //forceCheckpoint(ig);
 
         //TreeIterator treeIter = new TreeIterator(ig.configuration().getDataStorageConfiguration().getPageSize());
+
+        System.gc();
 
         IgniteCacheProxyImpl<Integer, byte[]> cacheImpl = IgniteUtils.field(cache, "delegate");
 
@@ -258,7 +409,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
     private void iterate(GridDhtLocalPartition partition) throws IgniteCheckedException {
         IgniteCacheOffheapManager.CacheDataStore partDataStore = partition.group().offheap().dataStore(partition);
         CacheGroupContext cacheGrp = partition.group();
-        PageMemoryEx partPageMem = (PageMemoryEx)cacheGrp.dataRegion().pageMemory();
+        PageMemory partPageMem = cacheGrp.dataRegion().pageMemory();
         long metaPageId = partDataStore.tree().getMetaPageId();
         long metaPage = partPageMem.acquirePage(cacheGrp.groupId(), metaPageId);
 
@@ -764,6 +915,110 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
             }
 
             assertTrue(atLeastOneSmaller);
+        }
+    }
+
+    /** */
+    static final class TheEpicData {
+        /** */
+        private long long1;
+        /** */
+        private long long2;
+        /** */
+        @QuerySqlField()
+        private long long3;
+        /** */
+        private byte byte1;
+        /** */
+        @QuerySqlField()
+        private byte byte2;
+        /** */
+        @QuerySqlField()
+        private int int1;
+        /** */
+        @QuerySqlField()
+        private int int2;
+        /** */
+        private int int3;
+        /** */
+        private String str1 = "adfgsaf sas53c";
+        /** */
+        @QuerySqlField()
+        private String str2 = "abc657sdfgtgserygertjdrjfgj dfg53";
+        /** */
+        @QuerySqlField(index=true)
+        private String str3 = "abc657dfzhgdsfsgsdgsdfgsdfxc vjljoljp[i[ipoi[pasfojasdofiujoip3u5oijoijopzkjgbsg";
+        /** */
+        private byte[] raw1 = new byte[60];
+        /** */
+        private byte[] raw2 = new byte[771];
+        /** */
+        private byte[] raw3 = new byte[17_455];
+        /** */
+        private byte[] raw4 = new byte[35_724];
+
+        /** */
+        public TheEpicData(boolean randomize) {
+            if (randomize) {
+                Random rnd = new Random();
+
+                raw1 = rndBytes(raw1.length, rnd);
+                raw2 = rndBytes(raw2.length, rnd);
+                raw3 = rndBytes(raw3.length, rnd);
+                raw4 = rndBytes(raw4.length, rnd);
+
+                str2 = rndStr(str2.length(), rnd);
+                str3 = rndStr(str3.length(), rnd);
+            }
+        }
+
+        /** */
+        public int dataSize() throws IllegalAccessException {
+            int res = 0;
+
+            for (Field f : TheEpicData.class.getDeclaredFields()) {
+                if (f.getType() == int.class || f.getType() == float.class)
+                    res += 4;
+                else if (f.getType() == long.class || f.getType() == double.class)
+                    res += 8;
+                else if (f.getType() == short.class)
+                    res += 2;
+                else if (f.getType() == byte.class)
+                    res += 2;
+                else if (f.getType() == byte[].class)
+                    res += 4 + ((byte[])f.get(this)).length;
+                else if (f.getType() == String.class)
+                    res += 4 + ((String)f.get(this)).getBytes().length;
+                else
+                    throw new RuntimeException("Unknown field type: " + f.getType().getName());
+            }
+
+            return res;
+        }
+
+        /** */
+        private static byte[] rndBytes(int maxLen, Random rnd) {
+            if (rnd == null)
+                rnd = new Random();
+
+            byte[] res = new byte[maxLen / 2 + rnd.nextInt(maxLen / 2)];
+
+            rnd.nextBytes(res);
+
+            return res;
+        }
+
+        /** */
+        private static String rndStr(int maxLen, Random rnd) {
+            if (rnd == null)
+                rnd = new Random();
+
+            return rnd.ints(48, 122)
+                .filter(i -> (i < 57 || i > 65) && (i < 90 || i > 97))
+                .mapToObj(i -> (char)i)
+                .limit(maxLen / 2 + rnd.nextInt(maxLen / 2))
+                .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append)
+                .toString();
         }
     }
 }
