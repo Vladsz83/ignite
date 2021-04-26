@@ -20,8 +20,6 @@ package org.apache.ignite.internal.processors.cache.persistence;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.Serializable;
-import java.lang.reflect.Field;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -52,9 +50,11 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteState;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.IgnitionListener;
+import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.affinity.AffinityFunction;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
-import org.apache.ignite.cache.query.annotations.QuerySqlField;
+import org.apache.ignite.cache.query.QueryCursor;
+import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.cluster.ClusterState;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.DataRegionConfiguration;
@@ -87,6 +87,7 @@ import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.apache.ignite.transactions.Transaction;
 import org.apache.ignite.transactions.TransactionConcurrency;
 import org.apache.ignite.transactions.TransactionIsolation;
+import org.apache.ignite.util.model.TheEpicData;
 import org.junit.Test;
 
 import static org.apache.ignite.cache.CacheAtomicityMode.ATOMIC;
@@ -219,11 +220,11 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         final int supposedDataExtraSize = 68;
         final float supposedRegionMetaPercent = 0.03f;
 
-        final int cycles = 10;
-        final int partCnt = 1024;
+        final int cycles = 100;
+//        final int partCnt = 1024;
 
-//        final long maxRegionSize = 1024 * IgniteUtils.MB;
-        final long maxRegionSize = 512 * 1024L * 1024L;
+        final long maxRegionSize = 1024 * IgniteUtils.MB;
+//        final long maxRegionSize = 512 * 1024L * 1024L;
         final int pageSize = 4 * 1024;
 
         final int minDataSize = 2 * 1024;
@@ -236,34 +237,39 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 //        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent))
 //            / (supposedDataExtraSize + new TheEpicData(false).dataSize()));
 //        final int maxDataCnt = 18920;
-        final int maxDataCnt = 9450;
+        final int maxDataCnt = 25_000;
 
         final int transactionSize = 0;
 
         IgniteConfiguration cfg = getConfiguration();
 //        cfg.getDataStorageConfiguration().setWalMode(WALMode.NONE);
-        cfg.getDataStorageConfiguration().setWalSegmentSize(16 * (int)IgniteUtils.MB);
-        cfg.getDataStorageConfiguration().setWalSegments(32);
+        cfg.getDataStorageConfiguration().setWalSegmentSize(64 * (int)IgniteUtils.MB);
+        cfg.getDataStorageConfiguration().setWalSegments(12);
 //        cfg.getDataStorageConfiguration().setWalBufferSize(8 * (int)IgniteUtils.MB);
 //        cfg.getDataStorageConfiguration().setWalCompactionEnabled(false);
-        cfg.getDataStorageConfiguration().setMaxWalArchiveSize(512 * IgniteUtils.MB);
+        cfg.getDataStorageConfiguration().setMaxWalArchiveSize(256 * IgniteUtils.MB);
 //        cfg.getDataStorageConfiguration().setWalArchivePath(cfg.getDataStorageConfiguration().getWalPath());
-        cfg.getDataStorageConfiguration().setCheckpointFrequency(2000);
+        cfg.getDataStorageConfiguration().setCheckpointFrequency(3000);
 
         cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setMaxSize(maxRegionSize);
         cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setInitialSize(maxRegionSize);
-//        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setPersistenceEnabled(false);
+        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setPersistenceEnabled(false);
         cfg.getDataStorageConfiguration().setPageSize(pageSize);
+
+        CacheConfiguration<Integer, TheEpicData> cacheCfg = new CacheConfiguration<>("defragCache");
+        cacheCfg.setAtomicityMode(transactionSize > 0 ? TRANSACTIONAL : ATOMIC);
+//        AffinityFunction affFunction = new RendezvousAffinityFunction(false, partCnt);
+//        cacheCfg.setAffinity(affFunction);
+        cacheCfg.setIndexedTypes(Integer.class, TheEpicData.class);
+        cacheCfg.setCacheMode(CacheMode.PARTITIONED);
+
+        cfg.setCacheConfiguration(cacheCfg);
+
+        cfg.setWorkDirectory("/tmp/ignite");
 
         IgniteEx ig = startGrid(cfg);
 
         ig.cluster().state(ClusterState.ACTIVE);
-
-        CacheConfiguration<Integer, TheEpicData> cacheCfg = new CacheConfiguration<>("defragCache");
-        cacheCfg.setAtomicityMode(transactionSize > 0 ? TRANSACTIONAL : ATOMIC);
-        AffinityFunction affFunction = new RendezvousAffinityFunction(false, partCnt);
-        cacheCfg.setAffinity(affFunction);
-        cacheCfg.setIndexedTypes(TheEpicData.class, Integer.class);
 
         IgniteCache<Integer, TheEpicData> cache = ig.getOrCreateCache(cacheCfg);
 
@@ -304,7 +310,15 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
                     try {
                         TheEpicData data = new TheEpicData(keys.get(i), false);
-                        cache.putIfAbsent(keys.get(i), data);
+                        cache.put(keys.get(i), data);
+
+                        QueryCursor<List<?>> cursor = cache.query(
+                            new SqlFieldsQuery("select * from TheEpicData where indexedStr = '" + data.getIndexedStr() + "'"));
+
+                        for (List<?> lst : cursor){
+                            System.err.println("TEST lst size: " + lst.size());
+                        }
+
 
 //                        cache.putIfAbsent(keys.get(i), data);
                         int dataSize = data.dataSize();
@@ -338,7 +352,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
                 if (cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().isPersistenceEnabled()) {
                     forceCheckpoint(ig);
 
-                    File cacheDir = new File(cfg.getIgniteHome() + "/work/db/" +
+                    File cacheDir = new File(cfg.getWorkDirectory() + "/db/" +
                         ig.name().replaceAll("\\.", "_") + "/cache-" + cacheCfg.getName());
 
                     writter.println("TEST | Cycle " + (c + 1) + ". Load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
@@ -361,7 +375,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
                 Collections.shuffle(keys);
                 for (int k : keys) {
-                    if (rnd.nextInt(100) < 80)
+                    if (rnd.nextInt(100) < 100)
                         cache.remove(k);
                 }
 
@@ -456,67 +470,67 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
      *
      * @throws Exception If failed.
      */
-    @Test
-    public void testSuccessfulDefragmentation() throws Exception {
-        IgniteEx ig = startGrid(0);
-
-        ig.cluster().state(ClusterState.ACTIVE);
-
-        fillCache(ig.cache(DEFAULT_CACHE_NAME));
-
-        forceCheckpoint(ig);
-
-        createMaintenanceRecord();
-
-        stopGrid(0);
-
-        File workDir = resolveCacheWorkDir(ig);
-
-        long[] oldPartLen = partitionSizes(workDir);
-
-        long oldIdxFileLen = new File(workDir, FilePageStoreManager.INDEX_FILE_NAME).length();
-
-        startGrid(0);
-
-        waitForDefragmentation(0);
-
-        assertEquals(ClusterState.INACTIVE, grid(0).context().state().clusterState().state());
-
-        GridTestUtils.assertThrowsAnyCause(
-            log,
-            () -> {
-                grid(0).cluster().state(ClusterState.ACTIVE);
-
-                return null;
-            },
-            IgniteCheckedException.class,
-            "Failed to activate cluster (node is in maintenance mode)"
-        );
-
-        long[] newPartLen = partitionSizes(workDir);
-
-        for (int p = 0; p < PARTS; p++)
-            assertTrue(newPartLen[p] < oldPartLen[p]);
-
-        long newIdxFileLen = new File(workDir, FilePageStoreManager.INDEX_FILE_NAME).length();
-
-        assertTrue(newIdxFileLen <= oldIdxFileLen);
-
-        File completionMarkerFile = defragmentationCompletionMarkerFile(workDir);
-        assertTrue(completionMarkerFile.exists());
-
-        stopGrid(0);
-
-        IgniteEx ig0 = startGrid(0);
-
-        ig0.cluster().state(ClusterState.ACTIVE);
-
-        assertFalse(completionMarkerFile.exists());
-
-        validateCache(grid(0).cache(DEFAULT_CACHE_NAME));
-
-        validateLeftovers(workDir);
-    }
+//    @Test
+//    public void testSuccessfulDefragmentation() throws Exception {
+//        IgniteEx ig = startGrid(0);
+//
+//        ig.cluster().state(ClusterState.ACTIVE);
+//
+//        fillCache(ig.cache(DEFAULT_CACHE_NAME));
+//
+//        forceCheckpoint(ig);
+//
+//        createMaintenanceRecord();
+//
+//        stopGrid(0);
+//
+//        File workDir = resolveCacheWorkDir(ig);
+//
+//        long[] oldPartLen = partitionSizes(workDir);
+//
+//        long oldIdxFileLen = new File(workDir, FilePageStoreManager.INDEX_FILE_NAME).length();
+//
+//        startGrid(0);
+//
+//        waitForDefragmentation(0);
+//
+//        assertEquals(ClusterState.INACTIVE, grid(0).context().state().clusterState().state());
+//
+//        GridTestUtils.assertThrowsAnyCause(
+//            log,
+//            () -> {
+//                grid(0).cluster().state(ClusterState.ACTIVE);
+//
+//                return null;
+//            },
+//            IgniteCheckedException.class,
+//            "Failed to activate cluster (node is in maintenance mode)"
+//        );
+//
+//        long[] newPartLen = partitionSizes(workDir);
+//
+//        for (int p = 0; p < PARTS; p++)
+//            assertTrue(newPartLen[p] < oldPartLen[p]);
+//
+//        long newIdxFileLen = new File(workDir, FilePageStoreManager.INDEX_FILE_NAME).length();
+//
+//        assertTrue(newIdxFileLen <= oldIdxFileLen);
+//
+//        File completionMarkerFile = defragmentationCompletionMarkerFile(workDir);
+//        assertTrue(completionMarkerFile.exists());
+//
+//        stopGrid(0);
+//
+//        IgniteEx ig0 = startGrid(0);
+//
+//        ig0.cluster().state(ClusterState.ACTIVE);
+//
+//        assertFalse(completionMarkerFile.exists());
+//
+//        validateCache(grid(0).cache(DEFAULT_CACHE_NAME));
+//
+//        validateLeftovers(workDir);
+//    }
 
     protected long[] partitionSizes(CacheGroupContext grp) {
         final int grpId = grp.groupId();
@@ -921,109 +935,4 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         }
     }
 
-    /** */
-    static final class TheEpicData implements Serializable {
-        /** */
-        private long long1;
-        /** */
-        private long long2;
-        /** */
-        @QuerySqlField()
-        private long long3;
-        /** */
-        private byte byte1;
-        /** */
-        @QuerySqlField()
-        private byte byte2;
-        /** */
-        @QuerySqlField(index = true)
-        private int id;
-        /** */
-        @QuerySqlField()
-        private int int2;
-        /** */
-        private int int3;
-        /** */
-        private String str1 = "adfgsaf sas53c";
-        /** */
-        @QuerySqlField()
-        private String str2 = "abc657sdfgtgserygertjdrjfgj dfg53";
-        /** */
-        @QuerySqlField()
-        private String str3 = "abc657dfzhgdsfsgsdgsdfgsdfxc vjljoljp[i[ipoi[pasfojasdofiujoip3u5oijoijopzkjgbsg";
-        /** */
-        private byte[] raw1 = new byte[60];
-        /** */
-        private byte[] raw2 = new byte[771];
-        /** */
-        private byte[] raw3 = new byte[17_455];
-        /** */
-        private byte[] raw4 = new byte[35_724];
-
-        /** */
-        public TheEpicData(int id, boolean randomize) {
-            this.id = id;
-
-            if (randomize) {
-                Random rnd = new Random();
-
-                raw1 = rndBytes(raw1.length, rnd);
-                raw2 = rndBytes(raw2.length, rnd);
-                raw3 = rndBytes(raw3.length, rnd);
-                raw4 = rndBytes(raw4.length, rnd);
-
-                str2 = rndStr(str2.length(), rnd);
-                str3 = rndStr(str3.length(), rnd);
-            }
-        }
-
-        /** */
-        public int dataSize() throws IllegalAccessException {
-            int res = 0;
-
-            for (Field f : TheEpicData.class.getDeclaredFields()) {
-                if (f.getType() == int.class || f.getType() == float.class)
-                    res += 4;
-                else if (f.getType() == long.class || f.getType() == double.class)
-                    res += 8;
-                else if (f.getType() == short.class)
-                    res += 2;
-                else if (f.getType() == byte.class)
-                    res += 2;
-                else if (f.getType() == byte[].class)
-                    res += 4 + ((byte[])f.get(this)).length;
-                else if (f.getType() == String.class)
-                    res += 4 + ((String)f.get(this)).getBytes().length;
-                else
-                    throw new RuntimeException("Unknown field type: " + f.getType().getName());
-            }
-
-            return res;
-        }
-
-        /** */
-        private static byte[] rndBytes(int maxLen, Random rnd) {
-            if (rnd == null)
-                rnd = new Random();
-
-            byte[] res = new byte[maxLen / 2 + rnd.nextInt(maxLen / 2)];
-
-            rnd.nextBytes(res);
-
-            return res;
-        }
-
-        /** */
-        private static String rndStr(int maxLen, Random rnd) {
-            if (rnd == null)
-                rnd = new Random();
-
-            return rnd.ints(48, 122)
-                .filter(i -> (i < 57 || i > 65) && (i < 90 || i > 97))
-                .mapToObj(i -> (char)i)
-                .limit(maxLen / 2 + rnd.nextInt(maxLen / 2))
-                .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append)
-                .toString();
-        }
-    }
 }

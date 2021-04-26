@@ -78,26 +78,26 @@ public class SqlQueriesExample {
             System.out.println();
             System.out.println(">>> SQL queries example started.");
 
-            CacheConfiguration<Long, Organization> orgCacheCfg = new CacheConfiguration<>(ORG_CACHE);
+//            CacheConfiguration<Long, Organization> orgCacheCfg = new CacheConfiguration<>(ORG_CACHE);
 
-            orgCacheCfg.setCacheMode(CacheMode.PARTITIONED); // Default.
-            orgCacheCfg.setIndexedTypes(Long.class, Organization.class);
+//            orgCacheCfg.setCacheMode(CacheMode.PARTITIONED); // Default.
+//            orgCacheCfg.setIndexedTypes(Long.class, Organization.class);
 
-            CacheConfiguration<AffinityKey<Long>, Person> colPersonCacheCfg =
-                new CacheConfiguration<>(COLLOCATED_PERSON_CACHE);
+//            CacheConfiguration<AffinityKey<Long>, Person> colPersonCacheCfg =
+//                new CacheConfiguration<>(COLLOCATED_PERSON_CACHE);
 
-            colPersonCacheCfg.setCacheMode(CacheMode.PARTITIONED); // Default.
-            colPersonCacheCfg.setIndexedTypes(AffinityKey.class, Person.class);
+//            colPersonCacheCfg.setCacheMode(CacheMode.PARTITIONED); // Default.
+//            colPersonCacheCfg.setIndexedTypes(AffinityKey.class, Person.class);
 
             CacheConfiguration<Long, Person> personCacheCfg = new CacheConfiguration<>(PERSON_CACHE);
 
-            personCacheCfg.setCacheMode(CacheMode.PARTITIONED); // Default.
+//            personCacheCfg.setCacheMode(CacheMode.PARTITIONED); // Default.
             personCacheCfg.setIndexedTypes(Long.class, Person.class);
 
             try {
                 // Create caches.
-                ignite.getOrCreateCache(orgCacheCfg);
-                ignite.getOrCreateCache(colPersonCacheCfg);
+//                ignite.getOrCreateCache(orgCacheCfg);
+//                ignite.getOrCreateCache(colPersonCacheCfg);
                 ignite.getOrCreateCache(personCacheCfg);
 
                 // Populate caches.
@@ -264,23 +264,23 @@ public class SqlQueriesExample {
      * Populate cache with test data.
      */
     private static void initialize() {
-        IgniteCache<Long, Organization> orgCache = Ignition.ignite().cache(ORG_CACHE);
+//        IgniteCache<Long, Organization> orgCache = Ignition.ignite().cache(ORG_CACHE);
 
         // Clear cache before running the example.
-        orgCache.clear();
+//        orgCache.clear();
 
         // Organizations.
         Organization org1 = new Organization("ApacheIgnite");
         Organization org2 = new Organization("Other");
+//
+//        orgCache.put(org1.id(), org1);
+//        orgCache.put(org2.id(), org2);
 
-        orgCache.put(org1.id(), org1);
-        orgCache.put(org2.id(), org2);
-
-        IgniteCache<AffinityKey<Long>, Person> colPersonCache = Ignition.ignite().cache(COLLOCATED_PERSON_CACHE);
+//        IgniteCache<AffinityKey<Long>, Person> colPersonCache = Ignition.ignite().cache(COLLOCATED_PERSON_CACHE);
         IgniteCache<Long, Person> personCache = Ignition.ignite().cache(PERSON_CACHE);
 
         // Clear caches before running the example.
-        colPersonCache.clear();
+//        colPersonCache.clear();
         personCache.clear();
 
         // People.
@@ -291,10 +291,10 @@ public class SqlQueriesExample {
 
         // Note that in this example we use custom affinity key for Person objects
         // to ensure that all persons are collocated with their organizations.
-        colPersonCache.put(p1.key(), p1);
-        colPersonCache.put(p2.key(), p2);
-        colPersonCache.put(p3.key(), p3);
-        colPersonCache.put(p4.key(), p4);
+//        colPersonCache.put(p1.key(), p1);
+//        colPersonCache.put(p2.key(), p2);
+//        colPersonCache.put(p3.key(), p3);
+//        colPersonCache.put(p4.key(), p4);
 
         // These Person objects are not collocated with their organizations.
         personCache.put(p1.id, p1);
