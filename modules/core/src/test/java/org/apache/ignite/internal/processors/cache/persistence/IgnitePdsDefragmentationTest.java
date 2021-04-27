@@ -165,7 +165,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         cfg.setConsistentId(igniteInstanceName);
 
         DataStorageConfiguration dsCfg = new DataStorageConfiguration();
-        dsCfg.setWalSegmentSize(4 * 1024 * 1024);
+//        dsCfg.setWalSegmentSize(4 * 1024 * 1024);
 
         dsCfg.setDefaultDataRegionConfiguration(
             new DataRegionConfiguration()
@@ -213,45 +213,30 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
      */
     @Test
     public void testSuccessfulDefragmentation2() throws Exception {
-        final int supposedDataExtraSize = 68;
-        final float supposedRegionMetaPercent = 0.03f;
-
         final int cycles = 100;
-//        final int partCnt = 1024;
 
-        final long maxRegionSize = 1024 * IgniteUtils.MB;
-//        final long maxRegionSize = 512 * 1024L * 1024L;
+        final long maxRegionSize = 512 * IgniteUtils.MB;
         final int pageSize = 4 * 1024;
 
-        final int minDataSize = 2 * 1024;
-        final int maxDataSize = 88 * 1024;
+        final int deleteChance = 80;
+        final boolean randomizaData = false;
+        final boolean persistenceEnabled = true;
+        final float metaPercent = persistenceEnabled ? 0.1f : 0.05f;
 
-        final int deleteChance = 100;
-
-//        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent))
-//            / (supposedDataExtraSize + maxDataSize));
-//        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent)) / supposedDataExtraSize);
-
-//        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent))
-//            / (supposedDataExtraSize + new TheEpicData(false).dataSize()));
-        final int maxDataCnt = 19030;
-//        final int maxDataCnt = 25_000;
+        final int maxDataCnt = (int)(
+            (randomizaData ? 1.32 : 1.0) *
+                ((double)maxRegionSize * (1.0f - metaPercent))
+                / new TheEpicData(0, false).dataSize());
 
         final int transactionSize = 0;
 
         IgniteConfiguration cfg = getConfiguration();
-//        cfg.getDataStorageConfiguration().setWalMode(WALMode.NONE);
-        cfg.getDataStorageConfiguration().setWalSegmentSize(64 * (int)IgniteUtils.MB);
-        cfg.getDataStorageConfiguration().setWalSegments(12);
-//        cfg.getDataStorageConfiguration().setWalBufferSize(8 * (int)IgniteUtils.MB);
-//        cfg.getDataStorageConfiguration().setWalCompactionEnabled(false);
         cfg.getDataStorageConfiguration().setMaxWalArchiveSize(256 * IgniteUtils.MB);
-//        cfg.getDataStorageConfiguration().setWalArchivePath(cfg.getDataStorageConfiguration().getWalPath());
-        cfg.getDataStorageConfiguration().setCheckpointFrequency(3000);
+        cfg.getDataStorageConfiguration().setCheckpointFrequency(Integer.MAX_VALUE - 1);
 
         cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setMaxSize(maxRegionSize);
         cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setInitialSize(maxRegionSize);
-        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setPersistenceEnabled(false);
+        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setPersistenceEnabled(persistenceEnabled);
         cfg.getDataStorageConfiguration().setPageSize(pageSize);
 
         CacheConfiguration<Integer, TheEpicData> cacheCfg = new CacheConfiguration<>("defragCache");
@@ -294,15 +279,8 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
                     if (transactionSize > 0 && txCnt == 0)
                         tx = ig.transactions().txStart(TransactionConcurrency.OPTIMISTIC, TransactionIsolation.READ_COMMITTED);
 
-//                    int dataSize = (c * 100) / cycles;
-//                    dataSize = minDataSize +
-//                        (maxDataSize-minDataSize) * (dataSize + rnd.nextInt(100 - dataSize)) / 100;
-//                    assert dataSize >= minDataSize && dataSize <= maxDataSize;
-//
-//                    byte[] data = new byte[dataSize];
-
                     try {
-                        TheEpicData data = new TheEpicData(keys.get(i), true);
+                        TheEpicData data = new TheEpicData(keys.get(i), randomizaData);
 
                         cache.putIfAbsent(keys.get(i), data);
                         int dataSize = data.dataSize();
@@ -333,26 +311,16 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
                     }
                 }
 
-                if (cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().isPersistenceEnabled()) {
+                if (persistenceEnabled)
                     forceCheckpoint(ig);
 
-                    File cacheDir = new File(cfg.getWorkDirectory() + "/db/" +
-                        ig.name().replaceAll("\\.", "_") + "/cache-" + cacheCfg.getName());
+                File cacheDir = new File(cfg.getWorkDirectory() + "/db/" +
+                    ig.name().replaceAll("\\.", "_") + "/cache-" + cacheCfg.getName());
 
-                    writter.println("TEST | Cycle " + (c + 1) + ". Load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
-                            "mb. Records: " + recordsNum + String.format(". Util.: %.1f", 100.0 * totalLoad / maxRegionSize) +
-//                    "%. Record size: " + data.length + ". Total load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
-                            "%. Total load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
-                            "mb. Persist. size: " + IgniteUtils.sizeInMegabytes(IgniteUtils.dirSize(cacheDir.toPath())) + "mb"
-                    );
-                }
-                else {
-                    writter.println("TEST | Cycle " + (c + 1) + ". Load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
-                            "mb. Records: " + recordsNum + String.format(". Util.: %.1f", 100.0 * totalLoad / maxRegionSize) +
-//                    "%. Record size: " + data.length + ". Total load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
-                            "%. Total load: " + IgniteUtils.sizeInMegabytes(totalLoad) + "mb"
-                    );
-                }
+                writter.println("TEST | Cycle " + (c + 1) + ". Load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
+                    "mb. Records: " + recordsNum + String.format(". Util.: %.1f", 100.0 * totalLoad / maxRegionSize) +
+                    "%." + (persistenceEnabled ? "Persist. size: " + IgniteUtils.sizeInMegabytes(IgniteUtils.dirSize(cacheDir.toPath())) + "mb" : "")
+                );
 
                 writter.flush();
                 System.gc();
@@ -365,14 +333,10 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
                 System.gc();
 
-                writter.println("TEST | Finished cycle " + (c + 1));
+                writter.println("TEST | Finished cycle " + (c + 1) + ". Cache size: " +cache.size());
                 writter.flush();
             }
         }
-
-        //forceCheckpoint(ig);
-
-        //TreeIterator treeIter = new TreeIterator(ig.configuration().getDataStorageConfiguration().getPageSize());
 
         System.gc();
 
@@ -380,30 +344,9 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         for (int partNum = 0; partNum < cacheImpl.context().topology().partitions(); partNum++) {
             GridDhtLocalPartition part = cacheImpl.context().topology().localPartition(partNum);
-//            IgniteCacheOffheapManager.CacheDataStore dataStore = cacheImpl.context().offheap().dataStore(partition);
 
             iterate(part);
-
-//            treeIter.iterate(dataStore.tree(), (PageMemoryEx)partition.group().dataRegion().pageMemory(),
-//                (tree0, io, pageAddr, idx) -> {
-//                    System.err.println("TEST | treeIter.iterate : pageAddr==" + pageAddr + ", itemIdx==" + idx +
-//                        ", io==" + io);
-//
-//                    CacheIdAwareDataLeafIO dataIO = (CacheIdAwareDataLeafIO)io;
-//
-//                    return true;
-//                });
         }
-
-        for (IgniteCacheOffheapManager.CacheDataStore dataStore : cacheImpl.context().offheap().cacheDataStores()) {
-
-        }
-        //cache.cacheG
-
-//        treeIter.iterate();
-//
-//        cache.
-
     }
 
     /** */

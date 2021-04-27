@@ -21,7 +21,7 @@ import java.util.Random;
 import org.apache.ignite.cache.query.annotations.QuerySqlField;
 
 /** */
-public class TheEpicData implements Serializable {
+public class TheEpicData {
     /** */
     private long long1;
     /** */
@@ -209,7 +209,7 @@ public class TheEpicData implements Serializable {
             else if (f.getType() == short.class)
                 res += 2;
             else if (f.getType() == byte.class)
-                res += 2;
+                res += 1;
             else if (f.getType() == byte[].class)
                 res += 4 + ((byte[])f.get(this)).length;
             else if (f.getType() == String.class)
