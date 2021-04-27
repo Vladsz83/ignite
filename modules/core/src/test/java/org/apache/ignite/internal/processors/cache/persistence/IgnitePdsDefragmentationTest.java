@@ -29,6 +29,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Random;
 import java.util.SortedSet;
@@ -164,30 +165,20 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         cfg.setConsistentId(igniteInstanceName);
 
-        DataStorageConfiguration dsCfg = new DataStorageConfiguration();
-//        dsCfg.setWalSegmentSize(4 * 1024 * 1024);
+        cfg.setDataStorageConfiguration(new DataStorageConfiguration());
 
-        dsCfg.setDefaultDataRegionConfiguration(
-            new DataRegionConfiguration()
-                .setInitialSize(100L * 1024 * 1024)
-                .setMaxSize(1024L * 1024 * 1024)
-                .setPersistenceEnabled(true)
-        );
-
-        cfg.setDataStorageConfiguration(dsCfg);
-
-        CacheConfiguration<?, ?> cache1Cfg = new CacheConfiguration<>(DEFAULT_CACHE_NAME)
-            .setAtomicityMode(TRANSACTIONAL)
-            .setGroupName(GRP_NAME)
-            .setAffinity(new RendezvousAffinityFunction(false, PARTS));
-
-        CacheConfiguration<?, ?> cache2Cfg = new CacheConfiguration<>(CACHE_2_NAME)
-            .setAtomicityMode(TRANSACTIONAL)
-            .setGroupName(GRP_NAME)
-            .setExpiryPolicyFactory(new PolicyFactory())
-            .setAffinity(new RendezvousAffinityFunction(false, PARTS));
-
-        cfg.setCacheConfiguration(cache1Cfg, cache2Cfg);
+//        CacheConfiguration<?, ?> cache1Cfg = new CacheConfiguration<>(DEFAULT_CACHE_NAME)
+//            .setAtomicityMode(TRANSACTIONAL)
+//            .setGroupName(GRP_NAME)
+//            .setAffinity(new RendezvousAffinityFunction(false, PARTS));
+//
+//        CacheConfiguration<?, ?> cache2Cfg = new CacheConfiguration<>(CACHE_2_NAME)
+//            .setAtomicityMode(TRANSACTIONAL)
+//            .setGroupName(GRP_NAME)
+//            .setExpiryPolicyFactory(new PolicyFactory())
+//            .setAffinity(new RendezvousAffinityFunction(false, PARTS));
+//
+//        cfg.setCacheConfiguration(cache1Cfg, cache2Cfg);
 
         return cfg;
     }
@@ -215,24 +206,26 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
     public void testSuccessfulDefragmentation2() throws Exception {
         final int cycles = 100;
 
-        final long maxRegionSize = 512 * IgniteUtils.MB;
+        final long maxRegionSize = 256 * IgniteUtils.MB;
         final int pageSize = 4 * 1024;
 
-        final int deleteChance = 80;
-        final boolean randomizaData = false;
+        final int deleteChance = 100;
+        final boolean randomizaData = true;
         final boolean persistenceEnabled = true;
-        final float metaPercent = persistenceEnabled ? 0.1f : 0.05f;
+        final float metaPercent = 0.05f;
 
         final int maxDataCnt = (int)(
-            (randomizaData ? 1.32 : 1.0) *
+//            (randomizaData ? 1.25 : 1.0) *
                 ((double)maxRegionSize * (1.0f - metaPercent))
                 / new TheEpicData(0, false).dataSize());
 
         final int transactionSize = 0;
 
         IgniteConfiguration cfg = getConfiguration();
-        cfg.getDataStorageConfiguration().setMaxWalArchiveSize(256 * IgniteUtils.MB);
-        cfg.getDataStorageConfiguration().setCheckpointFrequency(Integer.MAX_VALUE - 1);
+        cfg.getDataStorageConfiguration().setWalSegmentSize(32 * (int)IgniteUtils.MB);
+        cfg.getDataStorageConfiguration().setWalSegments(8);
+        cfg.getDataStorageConfiguration().setMaxWalArchiveSize(128 * IgniteUtils.MB);
+        cfg.getDataStorageConfiguration().setCheckpointFrequency(3000);
 
         cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setMaxSize(maxRegionSize);
         cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setInitialSize(maxRegionSize);
@@ -266,7 +259,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         try (PrintWriter writter = new PrintWriter(writterF)){
             for (int c = 0; c < cycles; ++c) {
-                writter.println("TEST | Cycle " + (c + 1) + " / " + cycles + " ...");
+                writter.println("Cycle " + (c + 1) + " / " + cycles + " ...");
                 writter.flush();
 
                 totalLoad = 0;
@@ -296,7 +289,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
                         loadSet.add(totalLoad);
                     }
                     catch (Exception e) {
-                        writter.println("TEST | Unable to put data: " + e.getMessage());
+                        writter.println(new Date() + "Unable to put data: " + e.getMessage());
                         break;
                     }
                 }
@@ -317,23 +310,33 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
                 File cacheDir = new File(cfg.getWorkDirectory() + "/db/" +
                     ig.name().replaceAll("\\.", "_") + "/cache-" + cacheCfg.getName());
 
-                writter.println("TEST | Cycle " + (c + 1) + ". Load: " + IgniteUtils.sizeInMegabytes(totalLoad) +
-                    "mb. Records: " + recordsNum + String.format(". Util.: %.1f", 100.0 * totalLoad / maxRegionSize) +
-                    "%." + (persistenceEnabled ? "Persist. size: " + IgniteUtils.sizeInMegabytes(IgniteUtils.dirSize(cacheDir.toPath())) + "mb" : "")
+                writter.println("Cycle " + (c + 1) +
+                    ". Load: " + totalLoad + " (" + IgniteUtils.sizeInMegabytes(totalLoad) + "mb)." +
+                    " Records: " + recordsNum + String.format(". Util.: %.1f", 100.0 * totalLoad / maxRegionSize) +
+                    "%." + (persistenceEnabled ?
+                    " Persist size: " + IgniteUtils.sizeInMegabytes(IgniteUtils.dirSize(cacheDir.toPath())) + "mb."
+                    : "")
                 );
 
                 writter.flush();
+
                 System.gc();
 
                 Collections.shuffle(keys);
                 for (int k : keys) {
                     if (rnd.nextInt(100) < deleteChance)
                         cache.remove(k);
+                    else
+                        System.err.println("TEST | Won't remove : " + k);
                 }
+
+                cache.clear();
+                cache.removeAll();
 
                 System.gc();
 
-                writter.println("TEST | Finished cycle " + (c + 1) + ". Cache size: " +cache.size());
+                writter.println("Finished cycle " + (c + 1) + '.');
+                writter.println();
                 writter.flush();
             }
         }

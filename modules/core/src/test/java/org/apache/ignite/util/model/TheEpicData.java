@@ -15,7 +15,6 @@ package org.apache.ignite.util.model;/*
  * limitations under the License.
  */
 
-import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.util.Random;
 import org.apache.ignite.cache.query.annotations.QuerySqlField;
@@ -69,11 +68,11 @@ public class TheEpicData {
 
             raw1 = rndBytes(raw1.length, rnd);
             raw2 = rndBytes(raw2.length, rnd);
-            raw3 = rndBytes(raw3.length, rnd);
-            raw4 = rndBytes(raw4.length, rnd);
+//            raw3 = rndBytes(raw3.length, rnd);
+//            raw4 = rndBytes(raw4.length, rnd);
 
-            indexedStr = rndStr(indexedStr.length(), rnd);
-            str3 = rndStr(str3.length(), rnd);
+//            indexedStr = rndStr(indexedStr.length(), rnd);
+//            str3 = rndStr(str3.length(), rnd);
         }
     }
 
