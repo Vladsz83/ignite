@@ -50,11 +50,7 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteState;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.IgnitionListener;
-import org.apache.ignite.cache.CacheMode;
-import org.apache.ignite.cache.affinity.AffinityFunction;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
-import org.apache.ignite.cache.query.QueryCursor;
-import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.cluster.ClusterState;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.DataRegionConfiguration;
@@ -230,14 +226,16 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         final int minDataSize = 2 * 1024;
         final int maxDataSize = 88 * 1024;
 
+        final int deleteChance = 100;
+
 //        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent))
 //            / (supposedDataExtraSize + maxDataSize));
 //        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent)) / supposedDataExtraSize);
 
 //        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - supposedRegionMetaPercent))
 //            / (supposedDataExtraSize + new TheEpicData(false).dataSize()));
-//        final int maxDataCnt = 18920;
-        final int maxDataCnt = 25_000;
+        final int maxDataCnt = 19030;
+//        final int maxDataCnt = 25_000;
 
         final int transactionSize = 0;
 
@@ -258,12 +256,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         CacheConfiguration<Integer, TheEpicData> cacheCfg = new CacheConfiguration<>("defragCache");
         cacheCfg.setAtomicityMode(transactionSize > 0 ? TRANSACTIONAL : ATOMIC);
-//        AffinityFunction affFunction = new RendezvousAffinityFunction(false, partCnt);
-//        cacheCfg.setAffinity(affFunction);
         cacheCfg.setIndexedTypes(Integer.class, TheEpicData.class);
-        cacheCfg.setCacheMode(CacheMode.PARTITIONED);
-
-        cfg.setCacheConfiguration(cacheCfg);
 
         cfg.setWorkDirectory("/tmp/ignite");
 
@@ -309,18 +302,9 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 //                    byte[] data = new byte[dataSize];
 
                     try {
-                        TheEpicData data = new TheEpicData(keys.get(i), false);
-                        cache.put(keys.get(i), data);
+                        TheEpicData data = new TheEpicData(keys.get(i), true);
 
-                        QueryCursor<List<?>> cursor = cache.query(
-                            new SqlFieldsQuery("select * from TheEpicData where indexedStr = '" + data.getIndexedStr() + "'"));
-
-                        for (List<?> lst : cursor){
-                            System.err.println("TEST lst size: " + lst.size());
-                        }
-
-
-//                        cache.putIfAbsent(keys.get(i), data);
+                        cache.putIfAbsent(keys.get(i), data);
                         int dataSize = data.dataSize();
 
                         if (transactionSize > 0 && ++txCnt >= transactionSize) {
@@ -375,7 +359,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
                 Collections.shuffle(keys);
                 for (int k : keys) {
-                    if (rnd.nextInt(100) < 100)
+                    if (rnd.nextInt(100) < deleteChance)
                         cache.remove(k);
                 }
 

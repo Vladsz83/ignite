@@ -25,30 +25,31 @@ public class TheEpicData implements Serializable {
     /** */
     private long long1;
     /** */
+    @QuerySqlField()
     private long long2;
     /** */
-//    @QuerySqlField()
+    @QuerySqlField(index = true)
     private long long3;
     /** */
     private byte byte1;
     /** */
-//    @QuerySqlField()
+    @QuerySqlField()
     private byte byte2;
     /** */
-    @QuerySqlField(index = true)
     private int id;
     /** */
-//    @QuerySqlField()
+    @QuerySqlField(index = true)
     private int int2;
     /** */
+    @QuerySqlField()
     private int int3;
     /** */
     private String str1 = "adfgsaf sas53c";
     /** */
-//    @QuerySqlField(index = true)
+    @QuerySqlField(index = true)
     private String indexedStr = "abc657sdfgtgserygertjdrjfgj dfg53";
     /** */
-//    @QuerySqlField()
+    @QuerySqlField()
     private String str3 = "abc657dfzhgdsfsgsdgsdfgsdfxc vjljoljp[i[ipoi[pasfojasdofiujoip3u5oijoijopzkjgbsg";
     /** */
     private byte[] raw1 = new byte[60];
