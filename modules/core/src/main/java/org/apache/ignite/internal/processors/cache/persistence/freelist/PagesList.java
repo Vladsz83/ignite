@@ -1242,8 +1242,19 @@ public abstract class PagesList extends DataStructure {
     private Stripe getPageForTake(int bucket) {
         Stripe[] tails = getBucket(bucket);
 
-        if (tails == null || bucketsSize.get(bucket) == 0)
+        if (tails == null) {
+//            if (bucket == 255)
+//                System.err.println("TEST | no tails");
+
             return null;
+        }
+
+        if (bucketsSize.get(bucket) == 0) {
+//            if (bucket == 255)
+//                System.err.println("TEST | empty bucket");
+
+            return null;
+        }
 
         int len = tails.length;
 
@@ -1936,7 +1947,13 @@ public abstract class PagesList extends DataStructure {
      * @param bucket Bucket number.
      */
     private void decrementBucketSize(int bucket) {
-        bucketsSize.decrementAndGet(bucket);
+        long sz = bucketsSize.decrementAndGet(bucket);
+//        if (sz == 0 && bucket == 255) {
+//            System.err.println("TEST | EMPTY BUCKET " + bucket + " of " + name);
+//        }
+//        else if (sz < 6 && bucket == 255) {
+//            System.err.println("TEST | bucket " + bucket + " size " + sz + " of " + name);
+//        }
     }
 
     /**

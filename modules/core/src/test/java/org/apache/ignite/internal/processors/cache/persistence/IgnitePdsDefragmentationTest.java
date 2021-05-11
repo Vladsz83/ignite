@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.cache.persistence;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.reflect.Field;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -30,12 +31,16 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
@@ -51,12 +56,12 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteState;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.IgnitionListener;
-import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
+import org.apache.ignite.cache.query.annotations.QuerySqlField;
 import org.apache.ignite.cluster.ClusterState;
 import org.apache.ignite.configuration.CacheConfiguration;
-import org.apache.ignite.configuration.DataRegionConfiguration;
 import org.apache.ignite.configuration.DataStorageConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.configuration.WALMode;
 import org.apache.ignite.failure.FailureHandler;
 import org.apache.ignite.failure.StopNodeFailureHandler;
 import org.apache.ignite.internal.IgniteEx;
@@ -73,18 +78,19 @@ import org.apache.ignite.internal.processors.cache.persistence.defragmentation.D
 import org.apache.ignite.internal.processors.cache.persistence.file.FileIOFactory;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStore;
 import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStoreManager;
+import org.apache.ignite.internal.processors.cache.persistence.freelist.AbstractFreeList;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.BPlusMetaIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.lang.IgniteThrowableConsumer;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.maintenance.MaintenanceRegistry;
+import org.apache.ignite.mxbean.IgniteMXBean;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.apache.ignite.transactions.Transaction;
 import org.apache.ignite.transactions.TransactionConcurrency;
 import org.apache.ignite.transactions.TransactionIsolation;
-import org.apache.ignite.util.model.TheEpicData;
 import org.junit.Test;
 
 import static org.apache.ignite.cache.CacheAtomicityMode.ATOMIC;
@@ -210,26 +216,26 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         final int pageSize = 4 * 1024;
 
         final int deleteChance = 100;
-        final boolean randomizaData = true;
-        final boolean persistenceEnabled = true;
+        final boolean randomize = true;
+        final boolean persistence = true;
         final float metaPercent = 0.05f;
 
-        final int maxDataCnt = (int)(
-//            (randomizaData ? 1.25 : 1.0) *
-                ((double)maxRegionSize * (1.0f - metaPercent))
-                / new TheEpicData(0, false).dataSize());
+        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - metaPercent))
+            / new TheEpicData(0, false).dataSize());
 
         final int transactionSize = 0;
 
         IgniteConfiguration cfg = getConfiguration();
-        cfg.getDataStorageConfiguration().setWalSegmentSize(32 * (int)IgniteUtils.MB);
+        cfg.getDataStorageConfiguration().setWalMode(WALMode.NONE);
+        cfg.getDataStorageConfiguration().setWalSegmentSize(8 * (int)IgniteUtils.MB);
         cfg.getDataStorageConfiguration().setWalSegments(8);
         cfg.getDataStorageConfiguration().setMaxWalArchiveSize(128 * IgniteUtils.MB);
         cfg.getDataStorageConfiguration().setCheckpointFrequency(3000);
 
         cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setMaxSize(maxRegionSize);
         cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setInitialSize(maxRegionSize);
-        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setPersistenceEnabled(persistenceEnabled);
+        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setPersistenceEnabled(persistence);
+        cfg.getDataStorageConfiguration().getDefaultDataRegionConfiguration().setMetricsEnabled(true);
         cfg.getDataStorageConfiguration().setPageSize(pageSize);
 
         CacheConfiguration<Integer, TheEpicData> cacheCfg = new CacheConfiguration<>("defragCache");
@@ -244,147 +250,167 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         IgniteCache<Integer, TheEpicData> cache = ig.getOrCreateCache(cacheCfg);
 
-        Transaction tx = null;
-        int txCnt = 0;
-        final Random rnd = new Random();
+        AtomicLong totalLoad = new AtomicLong();
 
-        long totalLoad;
-        long recordsNum;
-
-        SortedSet<Long> loadSet = new TreeSet<>();
-
-        File writterF = new File(((IgniteKernal)ig).getIgniteHome() +"/results/defragTest.log");
+        File writterF = new File(((IgniteMXBean)ig).getIgniteHome() +"/results/defragTest.log");
         writterF.delete();
         writterF.createNewFile();
+
+        List<Integer> keys = IntStream.range(0, maxDataCnt).boxed().collect(Collectors.toList());
+        AtomicInteger keyIdx = new AtomicInteger();
+
+        File cacheDir = new File(cfg.getWorkDirectory() + "/db/" +
+            ig.name().replaceAll("\\.", "_") + "/cache-" + cacheCfg.getName());
 
         try (PrintWriter writter = new PrintWriter(writterF)){
             for (int c = 0; c < cycles; ++c) {
                 writter.println("Cycle " + (c + 1) + " / " + cycles + " ...");
                 writter.flush();
 
-                totalLoad = 0;
-                recordsNum = 0;
-
-                List<Integer> keys = IntStream.range(0, maxDataCnt).boxed().collect(Collectors.toList());
+                totalLoad.set(0);
+                keyIdx.set(0);
                 Collections.shuffle(keys);
 
-                for (int i = 0; i < keys.size(); i++) {
-                    if (transactionSize > 0 && txCnt == 0)
-                        tx = ig.transactions().txStart(TransactionConcurrency.OPTIMISTIC, TransactionIsolation.READ_COMMITTED);
+                GridTestUtils.runMultiThreaded(new Callable<Object>() {
+                    @Override public Object call() {
+                        Transaction tx = null;
+                        int txCnt = 0;
 
-                    try {
-                        TheEpicData data = new TheEpicData(keys.get(i), randomizaData);
+                        for (int i = keyIdx.getAndIncrement(); i < keys.size(); i = keyIdx.incrementAndGet()) {
+                            if (transactionSize > 0 && txCnt == 0)
+                                tx = ig.transactions().txStart(TransactionConcurrency.OPTIMISTIC, TransactionIsolation.READ_COMMITTED);
 
-                        cache.putIfAbsent(keys.get(i), data);
-                        int dataSize = data.dataSize();
+                            try {
+                                TheEpicData data = new TheEpicData(keys.get(i), randomize);
 
-                        if (transactionSize > 0 && ++txCnt >= transactionSize) {
-                            txCnt = 0;
-                            tx.commit();
+                                cache.put(keys.get(i), data);
+
+                                if (transactionSize > 0 && ++txCnt >= transactionSize) {
+                                    txCnt = 0;
+                                    tx.commit();
+                                }
+
+                                totalLoad.addAndGet(data.dataSize());
+                            }
+                            catch (Exception e) {
+                                writter.println(new Date() + "Unable to put data: " + e.getMessage());
+                                break;
+                            }
                         }
 
-                        totalLoad += dataSize;
-                        ++recordsNum;
+                        if (txCnt > 0) {
+                            try {
+                                tx.commit();
+                            }
+                            catch (Exception ignored) {
+                                // No-op.
+                            }
+                        }
 
-                        loadSet.add(totalLoad);
+                        return null;
                     }
-                    catch (Exception e) {
-                        writter.println(new Date() + "Unable to put data: " + e.getMessage());
-                        break;
-                    }
-                }
+                }, Math.max(1, Runtime.getRuntime().availableProcessors() / 4), "defragPutter");
 
-                if (txCnt > 0) {
-                    txCnt = 0;
-                    try {
-                        tx.commit();
-                    }
-                    catch (Exception ignored) {
-                        // No-op.
-                    }
-                }
-
-                if (persistenceEnabled)
-                    forceCheckpoint(ig);
-
-                File cacheDir = new File(cfg.getWorkDirectory() + "/db/" +
-                    ig.name().replaceAll("\\.", "_") + "/cache-" + cacheCfg.getName());
-
-                writter.println("Cycle " + (c + 1) +
-                    ". Load: " + totalLoad + " (" + IgniteUtils.sizeInMegabytes(totalLoad) + "mb)." +
-                    " Records: " + recordsNum + String.format(". Util.: %.1f", 100.0 * totalLoad / maxRegionSize) +
-                    "%." + (persistenceEnabled ?
+                writter.println("Load: " + totalLoad + "b (" + IgniteUtils.sizeInMegabytes(totalLoad.get()) + "mb)." +
+                    " Records: " + maxDataCnt + String.format(". Util.: %.1f", 100.0 * totalLoad.get() / maxRegionSize) +
+                    "%." + (persistence ?
                     " Persist size: " + IgniteUtils.sizeInMegabytes(IgniteUtils.dirSize(cacheDir.toPath())) + "mb."
                     : "")
                 );
 
                 writter.flush();
 
-                System.gc();
-
                 Collections.shuffle(keys);
-                for (int k : keys) {
-                    if (rnd.nextInt(100) < deleteChance)
-                        cache.remove(k);
-                    else
-                        System.err.println("TEST | Won't remove : " + k);
+                keyIdx.set(0);
+
+                if (deleteChance < 0)
+                    cache.clear();
+                else if (deleteChance >= 100)
+                    cache.removeAll();
+                else {
+                    GridTestUtils.runMultiThreaded(new Callable<Object>() {
+                        @Override public Object call() {
+                            Random rnd = new Random();
+
+                            for (int i = keyIdx.getAndIncrement(); i < keys.size(); i = keyIdx.incrementAndGet())
+                                if (rnd.nextInt(100) < deleteChance)
+                                    cache.remove(keys.get(i));
+
+                            return null;
+                        }
+                    }, Math.max(1, Runtime.getRuntime().availableProcessors() / 4), "defragRemover");
                 }
 
-                cache.clear();
-                cache.removeAll();
+                IgniteCacheProxyImpl<Integer, byte[]> cacheImpl = IgniteUtils.field(cache, "delegate");
 
-                System.gc();
+                Map<String, Long> reuseCnt = new HashMap<>();
+                Map<String, Long> partlyFreeCnt = new HashMap<>();
+
+                for (int partNum = 0; partNum < cacheImpl.context().topology().partitions(); partNum++) {
+//                    iterate(cacheImpl.context().topology().localPartition(partNum));
+                    GridDhtLocalPartition partition = cacheImpl.context().topology().localPartition(partNum);
+                    IgniteCacheOffheapManager.CacheDataStore partDataStore = partition.dataStore();
+                    AbstractFreeList<?> freeList = (AbstractFreeList<?>)partDataStore.rowStore().freeList();
+
+                    for (int i = 0; i < freeList.bucketsCount(); ++i) {
+                        if (freeList.bucketSize(i) == 0)
+                            continue;
+
+                        Map<String, Long> counter = i == 255 ? reuseCnt : partlyFreeCnt;
+
+                        counter.putIfAbsent(freeList.name(), freeList.bucketSize(i));
+//                        System.err.println("TEST | Bucket size " + i + " of list " + freeList.name() + ": " + freeList.bucketSize(i) + " of part " + partition.id());
+                    }
+                }
+
+                writter.println("Total free pages: " + reuseCnt.values().stream().reduce(0L, Long::sum) +
+                    ". Total partly free pages: " + partlyFreeCnt.values().stream().reduce(0L, Long::sum));
 
                 writter.println("Finished cycle " + (c + 1) + '.');
                 writter.println();
                 writter.flush();
             }
         }
-
-        System.gc();
-
-        IgniteCacheProxyImpl<Integer, byte[]> cacheImpl = IgniteUtils.field(cache, "delegate");
-
-        for (int partNum = 0; partNum < cacheImpl.context().topology().partitions(); partNum++) {
-            GridDhtLocalPartition part = cacheImpl.context().topology().localPartition(partNum);
-
-            iterate(part);
-        }
     }
 
     /** */
-    private void iterate(GridDhtLocalPartition partition) throws IgniteCheckedException {
-        IgniteCacheOffheapManager.CacheDataStore partDataStore = partition.group().offheap().dataStore(partition);
-        CacheGroupContext cacheGrp = partition.group();
-        PageMemory partPageMem = cacheGrp.dataRegion().pageMemory();
-        long metaPageId = partDataStore.tree().getMetaPageId();
-        long metaPage = partPageMem.acquirePage(cacheGrp.groupId(), metaPageId);
-
-        try {
-            long metaPageAddr = partPageMem.readLock(cacheGrp.groupId(), metaPageId, metaPage);
-
-            try {
-                BPlusMetaIO metaIO = PageIO.getPageIO(metaPageAddr);
-
-                long rootLvl = metaIO.getRootLevel(metaPageAddr);
-                long lvlCnt = metaIO.getLevelsCount(metaPageAddr);
-
-                for (int lvl = 0; lvl < lvlCnt; lvl++) {
-                    long firstPageId = metaIO.getFirstPageId(metaPageAddr, lvl);
-
-                   // PageIO pageIO = PageIO.getPageIO()
-                }
-
-                //return metaIO.getFirstPageId(metaPageAddr, 0);
-            }
-            finally {
-                partPageMem.readUnlock(cacheGrp.groupId(), metaPageId, metaPageId);
-            }
-        }
-        finally {
-            partPageMem.releasePage(cacheGrp.groupId(), metaPageId, metaPageId);
-        }
-    }
+//    private void iterate(GridDhtLocalPartition partition) throws IgniteCheckedException {
+//        IgniteCacheOffheapManager.CacheDataStore partDataStore = partition.dataStore();
+//        PageMemory partPageMem = partition.group().dataRegion().pageMemory();
+//        long metaPageId = partDataStore.tree().getMetaPageId();
+//        long metaPage = partPageMem.acquirePage(partition.group().groupId(), metaPageId);
+//        AbstractFreeList<?> freeList = (AbstractFreeList<?>)partDataStore.rowStore().freeList();
+//
+//        for (int i = 0; i < freeList.bucketsCount(); ++i) {
+//            if (freeList.bucketSize(i) > 0)
+//                System.err.println("TEST | Bucket size " + i + " of list " + freeList.name() + ": " + freeList.bucketSize(i) + " of part " + partition.id());
+//        }
+//
+//        try {
+//            long metaPageAddr = partPageMem.readLock(partition.group().groupId(), metaPageId, metaPage);
+//
+//            try {
+//                BPlusMetaIO metaIO = PageIO.getPageIO(metaPageAddr);
+//
+//                long rootLvl = metaIO.getRootLevel(metaPageAddr);
+//                long lvlCnt = metaIO.getLevelsCount(metaPageAddr);
+//
+//                for (int lvl = 0; lvl < lvlCnt; lvl++) {
+//                    long firstPageId = metaIO.getFirstPageId(metaPageAddr, lvl);
+//
+//                   // PageIO pageIO = PageIO.getPageIO()
+//                }
+//
+//                //return metaIO.getFirstPageId(metaPageAddr, 0);
+//            }
+//            finally {
+//                partPageMem.readUnlock(partition.group().groupId(), metaPageId, metaPage);
+//            }
+//        }
+//        finally {
+//            partPageMem.releasePage(partition.group().groupId(), metaPageId, metaPage);
+//        }
+//    }
 
     /**
      * Basic test scenario. Does following steps:
@@ -865,4 +891,230 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         }
     }
 
+    /** */
+    private static class TheEpicData {
+        /** */
+        private long long1;
+        /** */
+        @QuerySqlField()
+        private long long2;
+        /** */
+        @QuerySqlField(index = true)
+        private long long3;
+        /** */
+        private byte byte1;
+        /** */
+        @QuerySqlField()
+        private byte byte2;
+        /** */
+        private int id;
+        /** */
+        @QuerySqlField(index = true)
+        private int int2;
+        /** */
+        @QuerySqlField()
+        private int int3;
+        /** */
+        private String str1 = "adfgsaf  aaad  53453 4c";
+        /** */
+        @QuerySqlField(index = true)
+        private String indexedStr = "sdfsdgf65 sdfds rjfgj sagsertg54dfg53";
+        /** */
+        @QuerySqlField()
+        private String str3 = "abc657dfzhgdsfsgsdgsdfgsdfxc vjljoldofiujoip3u gadfg5474567 5oijoijopzkjgbsg";
+        /** */
+        private byte[] raw1 = new byte[700];
+        /** */
+        private byte[] raw2 = new byte[500];
+        /** */
+        private byte[] raw3 = new byte[12_000];
+        /** */
+        private byte[] raw4 = new byte[55_000];
+
+        /** */
+        public TheEpicData(int id, boolean randomize) {
+            this.id = id;
+
+            if (randomize) {
+                Random rnd = new Random();
+
+                raw1 = rndBytes(raw1.length, rnd);
+                raw2 = rndBytes(raw2.length, rnd);
+                raw3 = rndBytes(raw3.length, rnd);
+                raw4 = rndBytes(raw4.length, rnd);
+
+                indexedStr = rndStr(indexedStr.length(), rnd);
+                str3 = rndStr(str3.length(), rnd);
+            }
+        }
+
+        public long getLong1() {
+            return long1;
+        }
+
+        public void setLong1(long long1) {
+            this.long1 = long1;
+        }
+
+        public long getLong2() {
+            return long2;
+        }
+
+        public void setLong2(long long2) {
+            this.long2 = long2;
+        }
+
+        public long getLong3() {
+            return long3;
+        }
+
+        public void setLong3(long long3) {
+            this.long3 = long3;
+        }
+
+        public byte getByte1() {
+            return byte1;
+        }
+
+        public void setByte1(byte byte1) {
+            this.byte1 = byte1;
+        }
+
+        public byte getByte2() {
+            return byte2;
+        }
+
+        public void setByte2(byte byte2) {
+            this.byte2 = byte2;
+        }
+
+        public int getId() {
+            return id;
+        }
+
+        public void setId(int id) {
+            this.id = id;
+        }
+
+        public int getInt2() {
+            return int2;
+        }
+
+        public void setInt2(int int2) {
+            this.int2 = int2;
+        }
+
+        public int getInt3() {
+            return int3;
+        }
+
+        public void setInt3(int int3) {
+            this.int3 = int3;
+        }
+
+        public String getStr1() {
+            return str1;
+        }
+
+        public void setStr1(String str1) {
+            this.str1 = str1;
+        }
+
+        public String getIndexedStr() {
+            return indexedStr;
+        }
+
+        public void setIndexedStr(String indexedStr) {
+            this.indexedStr = indexedStr;
+        }
+
+        public String getStr3() {
+            return str3;
+        }
+
+        public void setStr3(String str3) {
+            this.str3 = str3;
+        }
+
+        public byte[] getRaw1() {
+            return raw1;
+        }
+
+        public void setRaw1(byte[] raw1) {
+            this.raw1 = raw1;
+        }
+
+        public byte[] getRaw2() {
+            return raw2;
+        }
+
+        public void setRaw2(byte[] raw2) {
+            this.raw2 = raw2;
+        }
+
+        public byte[] getRaw3() {
+            return raw3;
+        }
+
+        public void setRaw3(byte[] raw3) {
+            this.raw3 = raw3;
+        }
+
+        public byte[] getRaw4() {
+            return raw4;
+        }
+
+        public void setRaw4(byte[] raw4) {
+            this.raw4 = raw4;
+        }
+
+        /** */
+        public int dataSize() throws IllegalAccessException {
+            int res = 0;
+
+            for (Field f : TheEpicData.class.getDeclaredFields()) {
+                if (f.getType() == int.class || f.getType() == float.class)
+                    res += 4;
+                else if (f.getType() == long.class || f.getType() == double.class)
+                    res += 8;
+                else if (f.getType() == short.class)
+                    res += 2;
+                else if (f.getType() == byte.class)
+                    res += 1;
+                else if (f.getType() == byte[].class)
+                    res += 4 + ((byte[])f.get(this)).length;
+                else if (f.getType() == String.class)
+                    res += 4 + ((String)f.get(this)).getBytes().length;
+                else
+                    throw new RuntimeException("Unknown field type: " + f.getType().getName());
+            }
+
+            return res;
+        }
+
+        /** */
+        private static byte[] rndBytes(int maxLen, Random rnd) {
+            if (rnd == null)
+                rnd = new Random();
+
+            byte[] res = new byte[maxLen / 2 + rnd.nextInt(maxLen / 2)];
+
+            rnd.nextBytes(res);
+
+            return res;
+        }
+
+        /** */
+        private static String rndStr(int maxLen, Random rnd) {
+            if (rnd == null)
+                rnd = new Random();
+
+            return rnd.ints(48, 122)
+                .filter(i -> (i < 57 || i > 65) && (i < 90 || i > 97))
+                .mapToObj(i -> (char)i)
+                .limit(maxLen / 2 + rnd.nextInt(maxLen / 2))
+                .collect(StringBuilder::new, StringBuilder::append, StringBuilder::append)
+                .toString();
+        }
+    }
 }

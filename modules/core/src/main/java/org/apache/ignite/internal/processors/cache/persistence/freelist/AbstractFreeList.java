@@ -446,6 +446,8 @@ public abstract class AbstractFreeList<T extends Storable> extends PagesList imp
     ) throws IgniteCheckedException {
         super(cacheId, name, memPlc.pageMemory(), BUCKETS, wal, metaPageId, lockLsnr, ctx, pageFlag);
 
+//        System.err.println("TEST | abstract free list. Name=" + name + ", metaPageId="+metaPageId);
+
         rmvRow = new RemoveRowHandler(cacheId == 0);
 
         this.evictionTracker = memPlc.evictionTracker();
@@ -716,14 +718,23 @@ public abstract class AbstractFreeList<T extends Storable> extends PagesList imp
             for (int b = bucket(size, false) + 1; b < REUSE_BUCKET; b++) {
                 pageId = takeEmptyPage(b, row.ioVersions(), statHolder);
 
-                if (pageId != 0L)
+                if (pageId != 0L) {
+//                    System.err.println("TEST | Found page for size " + size + " and partition " + row.partition() + " and row size " + row.size());
+
                     break;
+                }
             }
         }
 
         if (pageId == 0L) { // Handle reuse bucket.
-            if (reuseList == this)
+            if (reuseList == this) {
                 pageId = takeEmptyPage(REUSE_BUCKET, row.ioVersions(), statHolder);
+
+//                if (pageId == 0) {
+//                    System.err.println("TEST | no empty page for size " + size + " and part " + row.partition() +
+//                        " and row size " + row.size() + " in " + name);
+//                }
+            }
             else {
                 pageId = reuseList.takeRecycledPage();
 

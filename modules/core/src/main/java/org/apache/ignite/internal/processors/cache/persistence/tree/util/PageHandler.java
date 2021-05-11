@@ -349,7 +349,7 @@ public abstract class PageHandler<X, R> {
     ) throws IgniteCheckedException {
         long pageAddr = writeLock(pageMem, grpId, pageId, page, lsnr, false);
 
-        if (pageAddr == 0L)
+        if (pageAddr == 0L)*
             return lockFailed;
 
         boolean ok = false;
