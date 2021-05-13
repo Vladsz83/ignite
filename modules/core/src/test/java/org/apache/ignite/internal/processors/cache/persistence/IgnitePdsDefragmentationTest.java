@@ -29,14 +29,12 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -56,6 +54,7 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteState;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.IgnitionListener;
+import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.cache.query.annotations.QuerySqlField;
 import org.apache.ignite.cluster.ClusterState;
 import org.apache.ignite.configuration.CacheConfiguration;
@@ -66,7 +65,6 @@ import org.apache.ignite.failure.FailureHandler;
 import org.apache.ignite.failure.StopNodeFailureHandler;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.IgniteInterruptedCheckedException;
-import org.apache.ignite.internal.IgniteKernal;
 import org.apache.ignite.internal.maintenance.MaintenanceFileStore;
 import org.apache.ignite.internal.pagemem.PageMemory;
 import org.apache.ignite.internal.pagemem.store.PageStoreCollection;
@@ -81,6 +79,7 @@ import org.apache.ignite.internal.processors.cache.persistence.file.FilePageStor
 import org.apache.ignite.internal.processors.cache.persistence.freelist.AbstractFreeList;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.BPlusMetaIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
+import org.apache.ignite.internal.processors.cache.tree.DataLeafIO;
 import org.apache.ignite.internal.util.IgniteUtils;
 import org.apache.ignite.internal.util.lang.IgniteThrowableConsumer;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -210,7 +209,9 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
      */
     @Test
     public void testSuccessfulDefragmentation2() throws Exception {
-        final int cycles = 100;
+        final int cycles = 100_000;
+
+        final int parts = 64;
 
         final long maxRegionSize = 256 * IgniteUtils.MB;
         final int pageSize = 4 * 1024;
@@ -218,10 +219,12 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
         final int deleteChance = 100;
         final boolean randomize = true;
         final boolean persistence = true;
-        final float metaPercent = 0.05f;
+        final float metaPercent = 0.3f;
 
-        final int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - metaPercent))
+        int maxDataCnt = (int)(((double)maxRegionSize * (1.0f - metaPercent))
             / new TheEpicData(0, false).dataSize());
+
+        maxDataCnt = 200;
 
         final int transactionSize = 0;
 
@@ -240,6 +243,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         CacheConfiguration<Integer, TheEpicData> cacheCfg = new CacheConfiguration<>("defragCache");
         cacheCfg.setAtomicityMode(transactionSize > 0 ? TRANSACTIONAL : ATOMIC);
+        cacheCfg.setAffinity(new RendezvousAffinityFunction(false, parts));
         cacheCfg.setIndexedTypes(Integer.class, TheEpicData.class);
 
         cfg.setWorkDirectory("/tmp/ignite");
@@ -252,7 +256,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
         AtomicLong totalLoad = new AtomicLong();
 
-        File writterF = new File(((IgniteMXBean)ig).getIgniteHome() +"/results/defragTest.log");
+        File writterF = new File(((IgniteMXBean)ig).getIgniteHome() + "/results/defragTest_" + (persistence ? "perssist_" : "mem_") + parts + ".log");
         writterF.delete();
         writterF.createNewFile();
 
@@ -269,7 +273,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
                 totalLoad.set(0);
                 keyIdx.set(0);
-                Collections.shuffle(keys);
+//                Collections.shuffle(keys);
 
                 GridTestUtils.runMultiThreaded(new Callable<Object>() {
                     @Override public Object call() {
@@ -320,8 +324,12 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
                 writter.flush();
 
-                Collections.shuffle(keys);
+//                Collections.shuffle(keys);
                 keyIdx.set(0);
+                IgniteCacheProxyImpl<Integer, byte[]> cacheImpl = IgniteUtils.field(cache, "delegate");
+
+//                for (int partNum = 0; partNum < cacheImpl.context().topology().partitions(); partNum++)
+//                    iterate(cacheImpl.context().topology().localPartition(partNum));
 
                 if (deleteChance < 0)
                     cache.clear();
@@ -341,8 +349,6 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
                     }, Math.max(1, Runtime.getRuntime().availableProcessors() / 4), "defragRemover");
                 }
 
-                IgniteCacheProxyImpl<Integer, byte[]> cacheImpl = IgniteUtils.field(cache, "delegate");
-
                 Map<String, Long> reuseCnt = new HashMap<>();
                 Map<String, Long> partlyFreeCnt = new HashMap<>();
 
@@ -350,6 +356,10 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 //                    iterate(cacheImpl.context().topology().localPartition(partNum));
                     GridDhtLocalPartition partition = cacheImpl.context().topology().localPartition(partNum);
                     IgniteCacheOffheapManager.CacheDataStore partDataStore = partition.dataStore();
+
+                    if(partDataStore.rowStore()==null)
+                        continue;
+
                     AbstractFreeList<?> freeList = (AbstractFreeList<?>)partDataStore.rowStore().freeList();
 
                     for (int i = 0; i < freeList.bucketsCount(); ++i) {
@@ -374,43 +384,59 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
     }
 
     /** */
-//    private void iterate(GridDhtLocalPartition partition) throws IgniteCheckedException {
-//        IgniteCacheOffheapManager.CacheDataStore partDataStore = partition.dataStore();
-//        PageMemory partPageMem = partition.group().dataRegion().pageMemory();
-//        long metaPageId = partDataStore.tree().getMetaPageId();
-//        long metaPage = partPageMem.acquirePage(partition.group().groupId(), metaPageId);
-//        AbstractFreeList<?> freeList = (AbstractFreeList<?>)partDataStore.rowStore().freeList();
-//
+    private void iterate(GridDhtLocalPartition partition) throws IgniteCheckedException {
+        IgniteCacheOffheapManager.CacheDataStore partDataStore = partition.dataStore();
+        PageMemory partPageMem = partition.group().dataRegion().pageMemory();
+        long metaPageId = partDataStore.tree().getMetaPageId();
+        long metaPage = partPageMem.acquirePage(partition.group().groupId(), metaPageId);
+        AbstractFreeList<?> freeList = (AbstractFreeList<?>)partDataStore.rowStore().freeList();
+
 //        for (int i = 0; i < freeList.bucketsCount(); ++i) {
 //            if (freeList.bucketSize(i) > 0)
 //                System.err.println("TEST | Bucket size " + i + " of list " + freeList.name() + ": " + freeList.bucketSize(i) + " of part " + partition.id());
 //        }
-//
-//        try {
-//            long metaPageAddr = partPageMem.readLock(partition.group().groupId(), metaPageId, metaPage);
-//
-//            try {
-//                BPlusMetaIO metaIO = PageIO.getPageIO(metaPageAddr);
-//
-//                long rootLvl = metaIO.getRootLevel(metaPageAddr);
-//                long lvlCnt = metaIO.getLevelsCount(metaPageAddr);
-//
-//                for (int lvl = 0; lvl < lvlCnt; lvl++) {
-//                    long firstPageId = metaIO.getFirstPageId(metaPageAddr, lvl);
-//
-//                   // PageIO pageIO = PageIO.getPageIO()
-//                }
-//
-//                //return metaIO.getFirstPageId(metaPageAddr, 0);
-//            }
-//            finally {
-//                partPageMem.readUnlock(partition.group().groupId(), metaPageId, metaPage);
-//            }
-//        }
-//        finally {
-//            partPageMem.releasePage(partition.group().groupId(), metaPageId, metaPage);
-//        }
-//    }
+
+        try {
+            long metaPageAddr = partPageMem.readLock(partition.group().groupId(), metaPageId, metaPage);
+
+            try {
+                BPlusMetaIO metaIO = PageIO.getPageIO(metaPageAddr);
+
+                long rootLvl = metaIO.getRootLevel(metaPageAddr);
+                long lvlCnt = metaIO.getLevelsCount(metaPageAddr);
+
+                for (int lvl = 0; lvl < lvlCnt; lvl++) {
+                    long pageId = metaIO.getFirstPageId(metaPageAddr, lvl);
+                    long page = partPageMem.acquirePage(partition.group().groupId(), pageId);
+                    try {
+                        long pageAddr = partPageMem.readLock(partition.group().groupId(), pageId, page);
+
+                        DataLeafIO io = (DataLeafIO)PageIO.getPageIO(pageAddr);
+
+                        System.err.println("TEST | pageIO: getDirectCount: " + io.getCount(pageAddr));
+
+
+//                        System.err.println("TEST | pageIO: getDirectCount: " + io.getDirectCount(pageAddr));
+//                        System.err.println("TEST | pageIO: getFreeSpace: " + io.getFreeSpace(pageAddr));
+//                        System.err.println("TEST | pageIO: getRealFreeSpace: " + io.getRealFreeSpace(pageAddr));
+//                        System.err.println("TEST | pageIO: getRowsCount: " + io.getRowsCount(pageAddr));
+                    }
+                    finally {
+                        partPageMem.readUnlock(partition.group().groupId(), pageId, page);
+                    }
+
+                }
+
+                //return metaIO.getFirstPageId(metaPageAddr, 0);
+            }
+            finally {
+                partPageMem.readUnlock(partition.group().groupId(), metaPageId, metaPage);
+            }
+        }
+        finally {
+            partPageMem.releasePage(partition.group().groupId(), metaPageId, metaPage);
+        }
+    }
 
     /**
      * Basic test scenario. Does following steps:
@@ -1099,7 +1125,7 @@ public class IgnitePdsDefragmentationTest extends GridCommonAbstractTest {
 
             byte[] res = new byte[maxLen / 2 + rnd.nextInt(maxLen / 2)];
 
-            rnd.nextBytes(res);
+//            rnd.nextBytes(res);
 
             return res;
         }

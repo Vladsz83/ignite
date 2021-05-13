@@ -46,6 +46,7 @@ import org.apache.ignite.internal.processors.cache.persistence.tree.reuse.ReuseB
 import org.apache.ignite.internal.processors.cache.persistence.tree.reuse.ReuseList;
 import org.apache.ignite.internal.processors.cache.persistence.tree.util.PageHandler;
 import org.apache.ignite.internal.processors.cache.persistence.tree.util.PageLockListener;
+import org.apache.ignite.internal.processors.cache.tree.DataRow;
 import org.apache.ignite.internal.util.GridCursorIteratorWrapper;
 import org.apache.ignite.internal.util.lang.GridCursor;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -686,6 +687,12 @@ public abstract class AbstractFreeList<T extends Storable> extends PagesList imp
      */
     private int writeSinglePage(T row, int written, IoStatisticsHolder statHolder) throws IgniteCheckedException {
         AbstractDataPageIO initIo = null;
+
+//        System.err.println("TEST | write row len: " + row.size() + written);
+//        else
+//            System.err.println("TEST | write row len: " + row.size());
+
+//        System.err.println("TEST | write row len: " + row.getClass().getSimpleName());
 
         long pageId = takePage(row.size() - written, row, statHolder);
 
