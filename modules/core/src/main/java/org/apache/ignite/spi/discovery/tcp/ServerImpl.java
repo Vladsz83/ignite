@@ -4253,6 +4253,10 @@ class ServerImpl extends TcpDiscoveryImpl {
                 else {
                     if (!node.isClient() && !node.isDaemon()) {
                         if (nodesIdsHist.contains(node.id())) {
+                            log.warning("Rejected to add node in cluster [nodeId=" + node.id() +
+                                ", addrs=" + U.addressesAsString(node) + "]. Duplicated ID found in the joined node " +
+                                "IDs history.");
+
                             try {
                                 trySendMessageDirectly(node, createTcpDiscoveryDuplicateIdMessage(locNodeId, node));
                             }
