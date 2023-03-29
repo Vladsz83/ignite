@@ -90,6 +90,7 @@ import org.apache.ignite.internal.processors.tracing.SpanTags;
 import org.apache.ignite.internal.processors.tracing.messages.SpanContainer;
 import org.apache.ignite.internal.processors.tracing.messages.TraceableMessage;
 import org.apache.ignite.internal.processors.tracing.messages.TraceableMessagesTable;
+import org.apache.ignite.internal.util.GridBoundedConcurrentLinkedHashMap;
 import org.apache.ignite.internal.util.GridBoundedLinkedHashSet;
 import org.apache.ignite.internal.util.GridConcurrentHashSet;
 import org.apache.ignite.internal.util.IgniteUtils;
@@ -313,8 +314,8 @@ class ServerImpl extends TcpDiscoveryImpl {
         getInteger(IGNITE_NODE_IDS_HISTORY_SIZE, DFLT_NODE_IDS_HISTORY_SIZE);
 
     /** History of all node UUIDs that current node has seen. */
-    private final GridBoundedLinkedHashSet<UUID> nodesIdsHist =
-        new GridBoundedLinkedHashSet<>(JOINED_NODE_IDS_HISTORY_SIZE);
+    private final Map<UUID, Boolean> nodesIdsHist =
+        new GridBoundedConcurrentLinkedHashMap<>(JOINED_NODE_IDS_HISTORY_SIZE);
 
     /**
      * @param adapter Adapter.
@@ -4252,11 +4253,9 @@ class ServerImpl extends TcpDiscoveryImpl {
                 }
                 else {
                     if (!node.isClient()) {
-                        if (nodesIdsHist.contains(node.id())) {
-                            log.warning("Rejected to add node in cluster [nodeId=" + node.id() +
-                                ", addrs=" + U.addressesAsString(node) + "]. Duplicated ID found in the joined node " +
-                                "IDs history.");
+                        Boolean nodeUUIDConfirmend = nodesIdsHist.get(node.id());
 
+                        if (nodeUUIDConfirmend != null && nodeUUIDConfirmend) {
                             try {
                                 trySendMessageDirectly(node, createTcpDiscoveryDuplicateIdMessage(locNodeId, node));
                             }
@@ -4951,7 +4950,9 @@ class ServerImpl extends TcpDiscoveryImpl {
             }
 
             if (msg.verified() && !locNodeId.equals(node.id())) {
-                if (!node.isClient() && nodesIdsHist.contains(node.id())) {
+                Boolean nodeUUIDConfirmend = nodesIdsHist.get(node.id());
+
+                if (!node.isClient() && (nodeUUIDConfirmend != null && nodeUUIDConfirmend)) {
                     U.warn(log, "Discarding node added message since local node has already seen " +
                         "joining node in topology [node=" + node + ", locNode=" + locNode + ", msg=" + msg + ']');
 
@@ -5266,6 +5267,13 @@ class ServerImpl extends TcpDiscoveryImpl {
 
             if (locNodeCoord) {
                 if (msg.verified()) {
+                    nodesIdsHist.compute(msg.nodeId(), (nodeId0, cnfrm) -> {
+                        if (nodeId0 != null)
+                            cnfrm = true;
+
+                        return cnfrm;
+                    });
+
                     addMessage(new TcpDiscoveryDiscardMessage(locNodeId, msg.id(), false));
 
                     return;
@@ -5336,7 +5344,7 @@ class ServerImpl extends TcpDiscoveryImpl {
                     notifiedDiscovery.set(notified);
 
                     if (!node.isClient())
-                        nodesIdsHist.add(node.id());
+                        nodesIdsHist.put(node.id(), false);
                 }
 
                 try {
@@ -5588,6 +5596,9 @@ class ServerImpl extends TcpDiscoveryImpl {
                 }
 
                 synchronized (mux) {
+                    if(joiningNodes.contains(leftNode.id()))
+                        nodesIdsHist.remove(leftNode.id());
+
                     joiningNodes.remove(leftNode.id());
                 }
 

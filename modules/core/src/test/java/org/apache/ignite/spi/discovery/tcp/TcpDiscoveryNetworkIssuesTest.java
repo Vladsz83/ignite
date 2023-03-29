@@ -146,7 +146,7 @@ public class TcpDiscoveryNetworkIssuesTest extends GridCommonAbstractTest {
     /**
      * @throws Exception If failed.
      */
-    public void testLostNode() throws Exception {
+    public void testLostNodeAddedMessage() throws Exception {
         AtomicInteger dropped = new AtomicInteger();
 
         specialSpi = new DropTcpDiscoverySpi(dropped);
