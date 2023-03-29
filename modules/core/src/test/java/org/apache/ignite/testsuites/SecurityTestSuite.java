@@ -38,12 +38,12 @@ import org.apache.ignite.internal.processors.security.client.ThinClientPermissio
 import org.apache.ignite.internal.processors.security.client.ThinClientPermissionCheckTest;
 import org.apache.ignite.internal.processors.security.client.ThinClientSecurityContextOnRemoteNodeTest;
 import org.apache.ignite.internal.processors.security.client.ThinClientSslPermissionCheckTest;
+import org.apache.ignite.internal.processors.security.cluster.ClusterStatePermissionTest;
 import org.apache.ignite.internal.processors.security.compute.ComputePermissionCheckTest;
 import org.apache.ignite.internal.processors.security.compute.closure.ComputeTaskCancelRemoteSecurityContextCheckTest;
 import org.apache.ignite.internal.processors.security.compute.closure.ComputeTaskRemoteSecurityContextCheckTest;
 import org.apache.ignite.internal.processors.security.compute.closure.DistributedClosureRemoteSecurityContextCheckTest;
 import org.apache.ignite.internal.processors.security.compute.closure.ExecutorServiceRemoteSecurityContextCheckTest;
-import org.apache.ignite.internal.processors.security.daemon.DaemonNodeBasicSecurityTest;
 import org.apache.ignite.internal.processors.security.datastreamer.DataStreamerPermissionCheckTest;
 import org.apache.ignite.internal.processors.security.datastreamer.closure.DataStreamerRemoteSecurityContextCheckTest;
 import org.apache.ignite.internal.processors.security.events.EventsRemoteSecurityContextCheckTest;
@@ -90,6 +90,7 @@ import org.junit.runners.Suite;
     IgniteClientContainSubjectAddressTest.class,
     ClientReconnectTest.class,
     SnapshotPermissionCheckTest.class,
+    ClusterStatePermissionTest.class,
 
     DistributedClosureRemoteSecurityContextCheckTest.class,
     ComputeTaskRemoteSecurityContextCheckTest.class,
@@ -130,7 +131,6 @@ import org.junit.runners.Suite;
     IgniteSecurityProcessorTest.class,
     MultipleSSLContextsTest.class,
     MaintenanceModeNodeSecurityTest.class,
-    DaemonNodeBasicSecurityTest.class,
     ServiceAuthorizationTest.class,
     ServiceStaticConfigTest.class
 })

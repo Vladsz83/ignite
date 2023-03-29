@@ -107,6 +107,7 @@ import org.apache.ignite.internal.processors.cache.persistence.wal.serializer.Re
 import org.apache.ignite.internal.processors.cache.persistence.wal.serializer.RecordSerializerFactory;
 import org.apache.ignite.internal.processors.cache.persistence.wal.serializer.RecordSerializerFactoryImpl;
 import org.apache.ignite.internal.processors.cache.persistence.wal.serializer.RecordV1Serializer;
+import org.apache.ignite.internal.processors.configuration.distributed.DistributedBooleanProperty;
 import org.apache.ignite.internal.processors.failure.FailureProcessor;
 import org.apache.ignite.internal.processors.timeout.GridTimeoutObject;
 import org.apache.ignite.internal.processors.timeout.GridTimeoutProcessor;
@@ -130,6 +131,7 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.thread.IgniteThread;
 import org.jetbrains.annotations.Nullable;
 
+import static java.lang.String.format;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static java.nio.file.StandardOpenOption.CREATE;
@@ -159,6 +161,7 @@ import static org.apache.ignite.internal.processors.cache.persistence.wal.serial
 import static org.apache.ignite.internal.processors.cache.persistence.wal.serializer.RecordV1Serializer.readSegmentHeader;
 import static org.apache.ignite.internal.processors.compress.CompressionProcessor.checkCompressionLevelBounds;
 import static org.apache.ignite.internal.processors.compress.CompressionProcessor.getDefaultCompressionLevel;
+import static org.apache.ignite.internal.processors.configuration.distributed.DistributedBooleanProperty.detachedBooleanProperty;
 import static org.apache.ignite.internal.util.io.GridFileUtils.ensureHardLinkAvailable;
 
 /**
@@ -219,6 +222,9 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
 
     /** @see IgniteSystemProperties#IGNITE_THRESHOLD_WAIT_TIME_NEXT_WAL_SEGMENT */
     public static final long DFLT_THRESHOLD_WAIT_TIME_NEXT_WAL_SEGMENT = 1000L;
+
+    /** CDC disabled distributed property name. */
+    public static final String CDC_DISABLED = "cdc.disabled";
 
     /** Use mapped byte buffer. */
     private final boolean mmap = IgniteSystemProperties.getBoolean(IGNITE_WAL_MMAP, DFLT_WAL_MMAP);
@@ -409,6 +415,9 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
     /** Pointer to the last successful checkpoint until which WAL segments can be safely deleted. */
     private volatile WALPointer lastCheckpointPtr = new WALPointer(0, 0, 0);
 
+    /** CDC disabled flag. */
+    private final DistributedBooleanProperty cdcDisabled = detachedBooleanProperty(CDC_DISABLED);
+
     /**
      * Constructor.
      *
@@ -495,6 +504,21 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
                 );
 
                 ensureHardLinkAvailable(walArchiveDir.toPath(), walCdcDir.toPath());
+
+                cctx.kernalContext().internalSubscriptionProcessor()
+                    .registerDistributedConfigurationListener(dispatcher -> {
+                        cdcDisabled.addListener((name, oldVal, newVal) -> {
+                            if (log.isInfoEnabled()) {
+                                log.info(format("Distributed property '%s' was changed from '%s' to '%s'.",
+                                    name, oldVal, newVal));
+                            }
+
+                            if (newVal != null && newVal)
+                                log.warning("CDC was disabled.");
+                        });
+
+                        dispatcher.registerProperty(cdcDisabled);
+                    });
             }
 
             serializer = new RecordSerializerFactoryImpl(cctx).createSerializer(serializerVer);
@@ -851,9 +875,6 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
         if (walForceArchiveTimeout > 0) {
             if (lastDataRecordLoggedMs.get() == 0)
                 return; //no data records were logged to current segment, do not rollover.
-
-            if (!checkTimeout(lastDataRecordLoggedMs, walForceArchiveTimeout))
-                return;
         }
         else if (!checkTimeout(lastRecordLoggedMs, walAutoArchiveAfterInactivity))
             return;
@@ -1235,8 +1256,8 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
     }
 
     /** {@inheritDoc} */
-    @Override public boolean disabled(int grpId) {
-        return cctx.walState().isDisabled(grpId);
+    @Override public boolean disabled(int grpId, long pageId) {
+        return cctx.walState().isDisabled(grpId, pageId);
     }
 
     /**
@@ -1708,8 +1729,10 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
 
         long absNextIdxStartTime = System.nanoTime();
 
-        // Signal to archiver that we are done with the segment and it can be archived.
+        // Signal to archiver that we are done with the segment, and it can be archived.
         long absNextIdx = archiver0.nextAbsoluteSegmentIndex();
+
+        assert absNextIdx == curIdx + 1 : "curIdx=" + curIdx + ", nextIdx=" + absNextIdx;
 
         long absNextIdxWaitTime = U.nanosToMillis(System.nanoTime() - absNextIdxStartTime);
 
@@ -2028,7 +2051,31 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
                 throw cleanErr;
 
             try {
-                long nextIdx = segmentAware.nextAbsoluteSegmentIndex();
+                long nextIdx;
+
+                boolean interrupted = false;
+
+                while (true) {
+                    try {
+                        nextIdx = segmentAware.nextAbsoluteSegmentIndex();
+
+                        break;
+                    }
+                    catch (IgniteInterruptedCheckedException e) {
+                        if (isCancelled.get()) {
+                            // Archiver will soon complete its work, so we can not wait for the segment to be archived.
+                            throw e;
+                        }
+                        else {
+                            // It is assumed that the interruption of the thread came for example from a user thread,
+                            // which should not interrupt write to the WAL, so we should just try again.
+                            interrupted = true;
+                        }
+                    }
+                }
+
+                if (interrupted)
+                    Thread.currentThread().interrupt();
 
                 synchronized (this) {
                     // Wait for formatter so that we do not open an empty file in DEFAULT mode.
@@ -2092,8 +2139,20 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
 
                 Files.move(dstTmpFile.toPath(), dstFile.toPath());
 
-                if (walCdcDir != null)
-                    Files.createLink(walCdcDir.toPath().resolve(dstFile.getName()), dstFile.toPath());
+                if (walCdcDir != null) {
+                    if (!cdcDisabled.getOrDefault(false)) {
+                        if (checkCdcWalDirectorySize(dstFile.length()))
+                            Files.createLink(walCdcDir.toPath().resolve(dstFile.getName()), dstFile.toPath());
+                        else {
+                            log.error("Creation of segment CDC link skipped. Configured CDC directory " +
+                                "maximum size exceeded.");
+                        }
+                    }
+                    else {
+                        log.warning("Creation of segment CDC link skipped. " +
+                            "'" + CDC_DISABLED + "' distributed property is 'true'.");
+                    }
+                }
 
                 if (mode != WALMode.NONE) {
                     try (FileIO f0 = ioFactory.create(dstFile, CREATE, READ, WRITE)) {
@@ -2158,6 +2217,27 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
             isCancelled.set(false);
 
             new IgniteThread(archiver).start();
+        }
+
+        /**
+         * @param len Length of file to check size.
+         * @return {@code True} if the CDC directory size check successful, otherwise {@code false}.
+         */
+        private boolean checkCdcWalDirectorySize(long len) {
+            long maxDirSize = igCfg.getDataStorageConfiguration().getCdcWalDirectoryMaxSize();
+
+            if (maxDirSize <= 0)
+                return true;
+
+            long dirSize = Arrays.stream(walCdcDir.listFiles(WAL_SEGMENT_FILE_FILTER)).mapToLong(File::length).sum();
+
+            if (dirSize + len <= maxDirSize)
+                return true;
+
+            log.warning("Configured CDC WAL directory maximum size exceeded [curDirSize=" + dirSize +
+                ", fileLength=" + len + ", cdcWalDirectoryMaxSize=" + maxDirSize + ']');
+
+            return false;
         }
     }
 
@@ -3219,6 +3299,11 @@ public class FileWriteAheadLogManager extends GridCacheSharedManagerAdapter impl
             len += descriptor.file.length();
 
         return len;
+    }
+
+    /** @return WAL cdc directory (including consistent ID as subfolder) */
+    @Nullable public File walCdcDirectory() {
+        return walCdcDir;
     }
 
     /**

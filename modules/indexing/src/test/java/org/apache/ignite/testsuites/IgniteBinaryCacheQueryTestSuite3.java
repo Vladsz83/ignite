@@ -17,8 +17,10 @@
 
 package org.apache.ignite.testsuites;
 
+import org.apache.ignite.cache.query.SqlFieldsQuery;
 import org.apache.ignite.internal.cache.query.index.sorted.inline.InlineIndexKeyTypeRegistryTest;
 import org.apache.ignite.internal.cdc.CacheEventsCdcTest;
+import org.apache.ignite.internal.cdc.CdcIndexRebuildTest;
 import org.apache.ignite.internal.cdc.SqlCdcTest;
 import org.apache.ignite.internal.metric.SystemViewSelfTest;
 import org.apache.ignite.internal.processors.cache.BigEntryQueryTest;
@@ -136,7 +138,6 @@ import org.apache.ignite.internal.processors.query.SqlQueryIndexWithDifferentTyp
 import org.apache.ignite.internal.processors.query.SqlSystemViewsSelfTest;
 import org.apache.ignite.internal.processors.query.h2.GridIndexRebuildSelfTest;
 import org.apache.ignite.internal.processors.query.h2.GridIndexRebuildTest;
-import org.apache.ignite.internal.processors.query.h2.H2ColumnTypeConversionCheckSelfTest;
 import org.apache.ignite.internal.processors.query.h2.QueryParserMetricsHolderSelfTest;
 import org.apache.ignite.internal.processors.query.h2.RowCountTableStatisticsSurvivesNodeRestartTest;
 import org.apache.ignite.internal.processors.query.h2.RowCountTableStatisticsUsageTest;
@@ -163,8 +164,10 @@ import org.apache.ignite.internal.processors.sql.IgniteSQLColumnConstraintsTest;
 import org.apache.ignite.internal.processors.sql.IgniteTransactionSQLColumnConstraintTest;
 import org.apache.ignite.internal.sql.SqlParserUserSelfTest;
 import org.apache.ignite.spi.communication.tcp.GridOrderedMessageCancelSelfTest;
+import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.util.KillCommandsMXBeanTest;
 import org.apache.ignite.util.KillCommandsSQLTest;
+import org.junit.BeforeClass;
 import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 
@@ -372,14 +375,18 @@ import org.junit.runners.Suite;
     InlineIndexKeyTypeRegistryTest.class,
 
     IgniteQueryConvertibleTypesValidationTest.class,
-    H2ColumnTypeConversionCheckSelfTest.class,
 
     IgniteStatisticsTestSuite.class,
 
     // CDC tests.
     SqlCdcTest.class,
-    CacheEventsCdcTest.class
-
+    CacheEventsCdcTest.class,
+    CdcIndexRebuildTest.class
 })
 public class IgniteBinaryCacheQueryTestSuite3 {
+    /** Setup lazy mode default. */
+    @BeforeClass
+    public static void setupLazy() {
+        GridTestUtils.setFieldValue(SqlFieldsQuery.class, "DFLT_LAZY", false);
+    }
 }

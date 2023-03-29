@@ -67,6 +67,8 @@ import org.apache.ignite.internal.util.typedef.internal.CU;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.marshaller.MarshallerUtils;
 import org.apache.ignite.platform.PlatformType;
+import org.apache.ignite.spi.metric.jmx.JmxMetricExporterSpi;
+import org.apache.ignite.spi.metric.noop.NoopMetricExporterSpi;
 import org.apache.ignite.startup.cmdline.CdcCommandLineStartup;
 
 import static org.apache.ignite.internal.IgniteKernal.NL;
@@ -220,6 +222,9 @@ public class CdcMain implements Runnable {
     private Map<Integer, Long> cachesState;
 
     /** Stopped flag. */
+    private volatile boolean started;
+
+    /** Stopped flag. */
     private volatile boolean stopped;
 
     /** Already processed segments. */
@@ -314,19 +319,21 @@ public class CdcMain implements Runnable {
 
                 consumer.start(mreg, kctx.metric().registry(metricName("cdc", "consumer")));
 
+                started = true;
+
                 try {
                     consumeWalSegmentsUntilStopped();
                 }
                 finally {
-                    consumer.stop();
-
-                    if (log.isInfoEnabled())
-                        log.info("Ignite Change Data Capture Application stopped.");
+                    stop();
                 }
             }
             finally {
                 for (GridComponent comp : kctx)
                     comp.stop(false);
+
+                if (log.isInfoEnabled())
+                    log.info("Ignite Change Data Capture Application stopped.");
             }
         }
     }
@@ -346,9 +353,15 @@ public class CdcMain implements Runnable {
                 IgniteConfiguration cfg = super.prepareIgniteConfiguration();
 
                 cfg.setIgniteInstanceName(cdcInstanceName(igniteCfg.getIgniteInstanceName()));
+                cfg.setWorkDirectory(igniteCfg.getWorkDirectory());
 
                 if (!F.isEmpty(cdcCfg.getMetricExporterSpi()))
                     cfg.setMetricExporterSpi(cdcCfg.getMetricExporterSpi());
+                else {
+                    cfg.setMetricExporterSpi(U.IGNITE_MBEANS_DISABLED
+                        ? new NoopMetricExporterSpi()
+                        : new JmxMetricExporterSpi());
+                }
 
                 initializeDefaultMBeanServer(cfg);
 
@@ -418,6 +431,12 @@ public class CdcMain implements Runnable {
             AtomicLong lastSgmnt = new AtomicLong(-1);
 
             while (!stopped) {
+                if (!consumer.alive()) {
+                    log.warning("Consumer is not alive. Ignite Change Data Capture Application will be stopped.");
+
+                    return;
+                }
+
                 try (Stream<Path> cdcFiles = Files.list(cdcDir)) {
                     Set<Path> exists = new HashSet<>();
 
@@ -426,11 +445,14 @@ public class CdcMain implements Runnable {
                         // Need unseen WAL segments only.
                         .filter(p -> WAL_SEGMENT_FILE_FILTER.accept(p.toFile()) && !seen.contains(p))
                         .peek(seen::add) // Adds to seen.
-                        .sorted(Comparator.comparingLong(this::segmentIndex)) // Sort by segment index.
+                        .sorted(Comparator.comparingLong(CdcMain::segmentIndex)) // Sort by segment index.
                         .peek(p -> {
                             long nextSgmnt = segmentIndex(p);
 
-                            assert lastSgmnt.get() == -1 || nextSgmnt - lastSgmnt.get() == 1;
+                            if (lastSgmnt.get() != -1 && nextSgmnt - lastSgmnt.get() != 1) {
+                                throw new IgniteException("Found missed segments. Some events are missed. Exiting! " +
+                                    "[lastSegment=" + lastSgmnt.get() + ", nextSegment=" + nextSgmnt + ']');
+                            }
 
                             lastSgmnt.set(nextSgmnt);
                         })
@@ -510,15 +532,16 @@ public class CdcMain implements Runnable {
                 walState = null;
             }
 
-            boolean interrupted = Thread.interrupted();
+            boolean interrupted = false;
 
-            while (iter.hasNext() && !interrupted) {
+            do {
                 boolean commit = consumer.onRecords(iter);
 
                 if (commit) {
                     T2<WALPointer, Integer> curState = iter.state();
 
-                    assert curState != null;
+                    if (curState == null)
+                        continue;
 
                     if (log.isDebugEnabled())
                         log.debug("Saving state [curState=" + curState + ']');
@@ -545,7 +568,7 @@ public class CdcMain implements Runnable {
                 }
 
                 interrupted = Thread.interrupted();
-            }
+            } while (iter.hasNext() && !interrupted);
 
             if (interrupted)
                 throw new IgniteException("Change Data Capture Application interrupted");
@@ -795,7 +818,7 @@ public class CdcMain implements Runnable {
      * @param segment WAL segment file.
      * @return Segment index.
      */
-    public long segmentIndex(Path segment) {
+    public static long segmentIndex(Path segment) {
         String fn = segment.getFileName().toString();
 
         return Long.parseLong(fn.substring(0, fn.indexOf('.')));
@@ -804,10 +827,15 @@ public class CdcMain implements Runnable {
     /** Stops the application. */
     public void stop() {
         synchronized (this) {
+            if (stopped || !started)
+                return;
+
             if (log.isInfoEnabled())
                 log.info("Stopping Change Data Capture service instance");
 
             stopped = true;
+
+            consumer.stop();
         }
     }
 

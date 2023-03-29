@@ -83,7 +83,6 @@ import org.apache.ignite.internal.util.typedef.internal.SB;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.internal.util.worker.GridWorker;
 import org.apache.ignite.internal.util.worker.GridWorkerFuture;
-import org.apache.ignite.internal.visor.compute.VisorGatewayTask;
 import org.apache.ignite.internal.visor.util.VisorClusterGroupEmptyException;
 import org.apache.ignite.lang.IgniteBiTuple;
 import org.apache.ignite.lang.IgniteInClosure;
@@ -897,16 +896,11 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
 
                 break;
 
-            case EXE:
             case RESULT:
                 perm = SecurityPermission.TASK_EXECUTE;
 
                 GridRestTaskRequest taskReq = (GridRestTaskRequest)req;
                 name = taskReq.taskName();
-
-                // We should extract task name wrapped by VisorGatewayTask.
-                if (VisorGatewayTask.class.getName().equals(name))
-                    name = (String)taskReq.params().get(WRAPPED_TASK_IDX);
 
                 break;
 
@@ -922,20 +916,15 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
 
                 break;
 
-            case CLUSTER_ACTIVE:
-            case CLUSTER_INACTIVE:
-            case CLUSTER_ACTIVATE:
-            case CLUSTER_DEACTIVATE:
             case BASELINE_SET:
             case BASELINE_ADD:
             case BASELINE_REMOVE:
-            case CLUSTER_SET_STATE:
                 perm = SecurityPermission.ADMIN_OPS;
 
                 break;
 
+            case EXE:
             case DATA_REGION_METRICS:
-            case DATA_STORAGE_METRICS:
             case CACHE_METRICS:
             case CACHE_SIZE:
             case CACHE_METADATA:
@@ -949,6 +938,11 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
             case NAME:
             case LOG:
             case CLUSTER_CURRENT_STATE:
+            case CLUSTER_ACTIVE:
+            case CLUSTER_INACTIVE:
+            case CLUSTER_ACTIVATE:
+            case CLUSTER_DEACTIVATE:
+            case CLUSTER_SET_STATE:
             case CLUSTER_NAME:
             case BASELINE_CURRENT_STATE:
             case CLUSTER_STATE:
@@ -971,7 +965,7 @@ public class GridRestProcessor extends GridProcessorAdapter implements IgniteRes
      * @return Whether or not REST is enabled.
      */
     private boolean isRestEnabled() {
-        return !ctx.config().isDaemon() && ctx.config().getConnectorConfiguration() != null;
+        return ctx.config().getConnectorConfiguration() != null;
     }
 
     /**

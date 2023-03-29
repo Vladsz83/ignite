@@ -461,8 +461,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
 
         dataBag.addGridCommonData(DiscoveryDataExchangeType.QUERY_PROC.ordinal(), proposals);
 
-        // We should send inline index sizes information only to server nodes, but we can't distinguish easily daemon
-        // node from server node.
+        // We should send inline index sizes information only to server nodes.
         if (!dataBag.isJoiningNodeClient()) {
             HashMap<String, Serializable> nodeSpecificMap = new HashMap<>();
 
@@ -4312,11 +4311,20 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * the rebuilding of the indexes has been {@link #rebuildIndexesCompleted}.
      *
      * @param cacheCtx Cache context.
+     * @param recreate {@code True} if index.bin recreating.
      * @see #onFinishRebuildIndexes
      * @see #rebuildIndexesCompleted
      */
-    public void onStartRebuildIndexes(GridCacheContext cacheCtx) {
-        idxBuildStatusStorage.onStartRebuildIndexes(cacheCtx);
+    public void onStartRebuildIndexes(GridCacheContext cacheCtx, boolean recreate) {
+        idxBuildStatusStorage.onStartRebuildIndexes(cacheCtx, recreate);
+    }
+
+    /**
+     * Mark that index.bin recreating in progress.
+     * @param cacheCtx Cache context.
+     */
+    public void markIndexRecreate(GridCacheContext cacheCtx) {
+        idxBuildStatusStorage.markIndexRecreate(cacheCtx);
     }
 
     /**
@@ -4340,6 +4348,14 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      */
     public boolean rebuildIndexesCompleted(GridCacheContext cacheCtx) {
         return idxBuildStatusStorage.rebuildCompleted(cacheCtx.name());
+    }
+
+    /**
+     * @param cacheName Cache name.
+     * @return {@code True} if index.bin recreating completed.
+     */
+    public boolean recreateCompleted(String cacheName) {
+        return idxBuildStatusStorage.recreateCompleted(cacheName);
     }
 
     /**

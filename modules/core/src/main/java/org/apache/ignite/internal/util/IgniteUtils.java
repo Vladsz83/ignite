@@ -400,6 +400,9 @@ public abstract class IgniteUtils {
     /** Alphanumeric with underscore regexp pattern. */
     private static final Pattern ALPHANUMERIC_UNDERSCORE_PATTERN = Pattern.compile("^[a-zA-Z_0-9]+$");
 
+    /** Ignite package. */
+    public static final String IGNITE_PKG = "org.apache.ignite.";
+
     /** Project home directory. */
     private static volatile GridTuple<String> ggHome;
 
@@ -3735,7 +3738,7 @@ public abstract class IgniteUtils {
     }
 
     /**
-     * Deletes file or directory with all sub-directories and files.
+     * Deletes file or directory with all sub-directories and files. Not thread-safe.
      *
      * @param file File or directory to delete.
      * @return {@code true} if and only if the file or directory is successfully deleted,
@@ -3756,7 +3759,7 @@ public abstract class IgniteUtils {
     }
 
     /**
-     * Deletes file or directory with all sub-directories and files.
+     * Deletes file or directory with all sub-directories and files. Not thread-safe.
      *
      * @param path File or directory to delete.
      * @return {@code true} if and only if the file or directory is successfully deleted,
@@ -6827,7 +6830,7 @@ public abstract class IgniteUtils {
     public static String compact(String s) {
         return s.replace("org.apache.ignite.internal.visor.", "o.a.i.i.v.").
             replace("org.apache.ignite.internal.", "o.a.i.i.").
-            replace("org.apache.ignite.", "o.a.i.");
+            replace(IGNITE_PKG, "o.a.i.");
     }
 
     /**
@@ -7449,8 +7452,7 @@ public abstract class IgniteUtils {
      * @return Short string representing the node.
      */
     public static String toShortString(ClusterNode n) {
-        return "ClusterNode [id=" + n.id() + ", order=" + n.order() + ", addr=" + n.addresses() +
-            ", daemon=" + n.isDaemon() + ']';
+        return "ClusterNode [id=" + n.id() + ", order=" + n.order() + ", addr=" + n.addresses() + ']';
     }
 
     /**
@@ -11663,7 +11665,7 @@ public abstract class IgniteUtils {
      * @return {@code true} if local node is coordinator.
      */
     public static boolean isLocalNodeCoordinator(GridDiscoveryManager discoMgr) {
-        if (discoMgr.localNode().isClient() || discoMgr.localNode().isDaemon())
+        if (discoMgr.localNode().isClient())
             return false;
 
         DiscoverySpi spi = discoMgr.getInjectedDiscoverySpi();
@@ -12403,7 +12405,7 @@ public abstract class IgniteUtils {
      * @return {@code true} if the REST processor is enabled, {@code false} the otherwise.
      */
     public static boolean isRestEnabled(IgniteConfiguration cfg) {
-        boolean isClientNode = cfg.isClientMode() || cfg.isDaemon();
+        boolean isClientNode = cfg.isClientMode();
 
         // By default, rest processor doesn't start on client nodes.
         return cfg.getConnectorConfiguration() != null &&

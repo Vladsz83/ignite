@@ -93,9 +93,6 @@ public abstract class GridCommandHandlerAbstractTest extends GridCommonAbstractT
     /** */
     protected static final String CLIENT_NODE_NAME_PREFIX = "client";
 
-    /** */
-    protected static final String DAEMON_NODE_NAME_PREFIX = "daemon";
-
     /** Option is used for auto confirmation. */
     protected static final String CMD_AUTO_CONFIRMATION = "--yes";
 
@@ -276,8 +273,6 @@ public abstract class GridCommandHandlerAbstractTest extends GridCommonAbstractT
 
         cfg.setClientMode(igniteInstanceName.startsWith(CLIENT_NODE_NAME_PREFIX));
 
-        cfg.setDaemon(igniteInstanceName.startsWith(DAEMON_NODE_NAME_PREFIX));
-
         cfg.setIncludeEventTypes(EVT_CONSISTENCY_VIOLATION); // Extend if necessary.
 
         if (encryptionEnabled) {
@@ -317,6 +312,21 @@ public abstract class GridCommandHandlerAbstractTest extends GridCommonAbstractT
      */
     protected int execute(String... args) {
         return execute(new ArrayList<>(asList(args)));
+    }
+
+    /**
+     * Executes command and checks its exit code.
+     *
+     * @param expExitCode Expected exit code.
+     * @param args Command lines arguments.
+     * @return Result of command execution.
+     */
+    protected String executeCommand(int expExitCode, String... args) {
+        int res = execute(args);
+
+        assertEquals(expExitCode, res);
+
+        return testOut.toString();
     }
 
     /**

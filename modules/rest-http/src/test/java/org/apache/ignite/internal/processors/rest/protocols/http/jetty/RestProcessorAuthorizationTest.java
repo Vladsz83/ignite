@@ -43,7 +43,7 @@ import org.apache.ignite.plugin.security.SecurityPermission;
 import org.junit.Test;
 
 import static org.apache.ignite.internal.processors.cache.CacheGetRemoveSkipStoreTest.TEST_CACHE;
-import static org.apache.ignite.plugin.security.SecurityPermissionSetBuilder.ALLOW_ALL;
+import static org.apache.ignite.plugin.security.SecurityPermissionSetBuilder.ALL_PERMISSIONS;
 
 /**
  * Tests REST processor authorization commands GET_OR_CREATE_CACHE / DESTROY_CACHE.
@@ -63,7 +63,7 @@ public class RestProcessorAuthorizationTest extends CommonSecurityCheckTest {
         return new TestSecurityPluginProvider(
             name,
             null,
-            ALLOW_ALL,
+            ALL_PERMISSIONS,
             globalAuth,
             clientData()
         ) {
@@ -81,7 +81,8 @@ public class RestProcessorAuthorizationTest extends CommonSecurityCheckTest {
                         SecurityPermission perm,
                         SecurityContext securityCtx
                     ) throws SecurityException {
-                        authorizationCtxList.add(F.t(name, perm, securityCtx));
+                        if (perm.name().startsWith("CACHE_"))
+                            authorizationCtxList.add(F.t(name, perm, securityCtx));
 
                         super.authorize(name, perm, securityCtx);
                     }
@@ -135,5 +136,10 @@ public class RestProcessorAuthorizationTest extends CommonSecurityCheckTest {
         conn.connect();
 
         assertEquals(200, ((HttpURLConnection)conn).getResponseCode());
+    }
+
+    /** {@inheritDoc} */
+    @Override protected TestSecurityData[] clientData() {
+        return new TestSecurityData[] {new TestSecurityData(LOGIN, PWD, ALL_PERMISSIONS, new Permissions())};
     }
 }

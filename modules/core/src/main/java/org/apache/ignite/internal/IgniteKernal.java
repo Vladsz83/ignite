@@ -45,8 +45,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.cache.CacheException;
 import org.apache.ignite.DataRegionMetrics;
 import org.apache.ignite.DataRegionMetricsAdapter;
-import org.apache.ignite.DataStorageMetrics;
-import org.apache.ignite.DataStorageMetricsAdapter;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteAtomicLong;
 import org.apache.ignite.IgniteAtomicReference;
@@ -75,7 +73,6 @@ import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.IgniteTransactions;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.MemoryMetrics;
-import org.apache.ignite.PersistenceMetrics;
 import org.apache.ignite.cache.affinity.Affinity;
 import org.apache.ignite.cluster.BaselineNode;
 import org.apache.ignite.cluster.ClusterGroup;
@@ -111,6 +108,8 @@ import org.apache.ignite.internal.managers.failover.GridFailoverManager;
 import org.apache.ignite.internal.managers.indexing.GridIndexingManager;
 import org.apache.ignite.internal.managers.loadbalancer.GridLoadBalancerManager;
 import org.apache.ignite.internal.managers.systemview.GridSystemViewManager;
+import org.apache.ignite.internal.managers.systemview.IgniteConfigurationIterable;
+import org.apache.ignite.internal.managers.systemview.walker.ConfigurationViewWalker;
 import org.apache.ignite.internal.managers.tracing.GridTracingManager;
 import org.apache.ignite.internal.marshaller.optimized.OptimizedMarshaller;
 import org.apache.ignite.internal.plugin.IgniteLogInfoProvider;
@@ -216,9 +215,9 @@ import org.apache.ignite.spi.tracing.TracingConfigurationManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import static java.util.Collections.singleton;
 import static java.util.Optional.ofNullable;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_BINARY_MARSHALLER_USE_STRING_SERIALIZATION_VER_2;
-import static org.apache.ignite.IgniteSystemProperties.IGNITE_DAEMON;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_OPTIMIZED_MARSHALLER_USE_DEFAULT_SUID;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_SKIP_CONFIGURATION_CONSISTENCY_CHECK;
 import static org.apache.ignite.IgniteSystemProperties.IGNITE_STARVATION_CHECK_INTERVAL;
@@ -235,7 +234,6 @@ import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_BUILD_DATE;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_BUILD_VER;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_CLIENT_MODE;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_CONSISTENCY_CHECK_SKIPPED;
-import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_DAEMON;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_DATA_STORAGE_CONFIG;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_DATA_STREAMER_POOL_SIZE;
 import static org.apache.ignite.internal.IgniteNodeAttributes.ATTR_DEPLOYMENT_MODE;
@@ -354,6 +352,12 @@ public class IgniteKernal implements IgniteEx, Externalizable {
 
     /** System line separator. */
     public static final String NL = U.nl();
+
+    /** Name of the configuration system view. */
+    public static final String CFG_VIEW = "configuration";
+
+    /** Description of the configuration system view. */
+    public static final String CFG_VIEW_DESC = "Node configuration";
 
     /**
      * Default interval of checking thread pool state for the starvation. Will be used only if the
@@ -611,7 +615,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
 
             ClusterNode locNode = localNode();
 
-            if (locNode.isClient() || locNode.isDaemon())
+            if (locNode.isClient())
                 return false;
 
             DiscoveryDataClusterState clusterState = ctx.state().clusterState();
@@ -802,7 +806,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
      * @throws IgniteCheckedException If user threw exception during start.
      */
     private void notifyLifecycleBeans(LifecycleEventType evt) throws IgniteCheckedException {
-        if (!cfg.isDaemon() && cfg.getLifecycleBeans() != null) {
+        if (cfg.getLifecycleBeans() != null) {
             for (LifecycleBean bean : cfg.getLifecycleBeans())
                 if (bean != null) {
                     try {
@@ -949,7 +953,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
             startProcessor(rsrcProc);
 
             // Inject resources into lifecycle beans.
-            if (!cfg.isDaemon() && cfg.getLifecycleBeans() != null) {
+            if (cfg.getLifecycleBeans() != null) {
                 for (LifecycleBean bean : cfg.getLifecycleBeans()) {
                     if (bean != null)
                         rsrcProc.inject(bean);
@@ -1198,6 +1202,8 @@ public class IgniteKernal implements IgniteEx, Externalizable {
 
             registerMetrics();
 
+            registerConfigurationSystemView();
+
             ctx.cluster().registerMetrics();
 
             // Register MBeans.
@@ -1218,24 +1224,22 @@ public class IgniteKernal implements IgniteEx, Externalizable {
                 if (comp instanceof GridPluginComponent)
                     continue;
 
-                if (!skipDaemon(comp)) {
-                    try {
-                        comp.onKernalStart(active);
-                    }
-                    catch (IgniteNeedReconnectException e) {
-                        ClusterNode locNode = ctx.discovery().localNode();
+                try {
+                    comp.onKernalStart(active);
+                }
+                catch (IgniteNeedReconnectException e) {
+                    ClusterNode locNode = ctx.discovery().localNode();
 
-                        assert locNode.isClient();
+                    assert locNode.isClient();
 
-                        if (!ctx.discovery().reconnectSupported())
-                            throw new IgniteCheckedException("Client node in forceServerMode " +
-                                "is not allowed to reconnect to the cluster and will be stopped.");
+                    if (!ctx.discovery().reconnectSupported())
+                        throw new IgniteCheckedException("Client node in forceServerMode " +
+                            "is not allowed to reconnect to the cluster and will be stopped.");
 
-                        if (log.isDebugEnabled())
-                            log.debug("Failed to start node components on node start, will wait for reconnect: " + e);
+                    if (log.isDebugEnabled())
+                        log.debug("Failed to start node components on node start, will wait for reconnect: " + e);
 
-                        recon = true;
-                    }
+                    recon = true;
                 }
             }
 
@@ -1277,7 +1281,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
         String intervalStr = IgniteSystemProperties.getString(IGNITE_STARVATION_CHECK_INTERVAL);
 
         // Start starvation checker if enabled.
-        boolean starveCheck = !isDaemon() && !"0".equals(intervalStr);
+        boolean starveCheck = !"0".equals(intervalStr);
 
         if (starveCheck) {
             final long interval = F.isEmpty(intervalStr) ? DFLT_PERIODIC_STARVATION_CHECK_FREQ : Long.parseLong(intervalStr);
@@ -1360,9 +1364,8 @@ public class IgniteKernal implements IgniteEx, Externalizable {
 
         info.ackKernalStarted(log, this);
 
-        if (!isDaemon())
-            ctx.discovery().ackTopology(ctx.discovery().localJoin().joinTopologyVersion().topologyVersion(),
-                EventType.EVT_NODE_JOINED, localNode());
+        ctx.discovery().ackTopology(ctx.discovery().localJoin().joinTopologyVersion().topologyVersion(),
+            EventType.EVT_NODE_JOINED, localNode());
 
         startTimer.finishGlobalStage("Await exchange");
     }
@@ -1658,10 +1661,6 @@ public class IgniteKernal implements IgniteEx, Externalizable {
         // Add it to attributes.
         add(ATTR_JVM_ARGS, jvmArgs.toString());
 
-        // Check daemon system property and override configuration if it's set.
-        if (isDaemon())
-            add(ATTR_DAEMON, "true");
-
         // In case of the parsing error, JMX remote disabled or port not being set
         // node attribute won't be set.
         if (isJmxRemoteEnabled()) {
@@ -1762,8 +1761,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
         ctx.add(mgr);
 
         try {
-            if (!skipDaemon(mgr))
-                mgr.start();
+            mgr.start();
         }
         catch (IgniteCheckedException e) {
             U.error(log, "Failed to start manager: " + mgr, e);
@@ -1780,8 +1778,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
         ctx.add(proc);
 
         try {
-            if (!skipDaemon(proc))
-                proc.start();
+            proc.start();
         }
         catch (IgniteCheckedException e) {
             throw new IgniteCheckedException("Failed to start processor: " + proc, e);
@@ -1854,8 +1851,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
                 GridComponent comp = it.previous();
 
                 try {
-                    if (!skipDaemon(comp))
-                        comp.onKernalStop(cancel);
+                    comp.onKernalStop(cancel);
                 }
                 catch (Throwable e) {
                     errOnStop = true;
@@ -1924,12 +1920,10 @@ public class IgniteKernal implements IgniteEx, Externalizable {
                 GridComponent comp = it.previous();
 
                 try {
-                    if (!skipDaemon(comp)) {
-                        comp.stop(cancel);
+                    comp.stop(cancel);
 
-                        if (log.isDebugEnabled())
-                            log.debug("Component stopped: " + comp);
-                    }
+                    if (log.isDebugEnabled())
+                        log.debug("Component stopped: " + comp);
                 }
                 catch (Throwable e) {
                     errOnStop = true;
@@ -2005,15 +1999,6 @@ public class IgniteKernal implements IgniteEx, Externalizable {
      */
     @Override public GridKernalContext context() {
         return ctx;
-    }
-
-    /**
-     * @return {@code True} is this node is daemon.
-     */
-    private boolean isDaemon() {
-        assert cfg != null;
-
-        return cfg.isDaemon() || IgniteSystemProperties.getBoolean(IGNITE_DAEMON);
     }
 
     /**
@@ -2803,7 +2788,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
 
     /** {@inheritDoc} */
     @Override public void active(boolean active) {
-        cluster().active(active);
+        cluster().state(active ? ClusterState.ACTIVE : ClusterState.INACTIVE);
     }
 
     /** */
@@ -2860,18 +2845,6 @@ public class IgniteKernal implements IgniteEx, Externalizable {
     }
 
     /** {@inheritDoc} */
-    @Override public DataStorageMetrics dataStorageMetrics() {
-        guard();
-
-        try {
-            return ctx.cache().context().database().persistentStoreMetrics();
-        }
-        finally {
-            unguard();
-        }
-    }
-
-    /** {@inheritDoc} */
     @Override public @NotNull TracingConfigurationManager tracingConfiguration() {
         guard();
 
@@ -2901,11 +2874,6 @@ public class IgniteKernal implements IgniteEx, Externalizable {
     /** {@inheritDoc} */
     @Nullable @Override public MemoryMetrics memoryMetrics(String memPlcName) {
         return DataRegionMetricsAdapter.valueOf(dataRegionMetrics(memPlcName));
-    }
-
-    /** {@inheritDoc} */
-    @Override public PersistenceMetrics persistentStoreMetrics() {
-        return DataStorageMetricsAdapter.valueOf(dataStorageMetrics());
     }
 
     /** {@inheritDoc} */
@@ -3152,7 +3120,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
         if (!ctx.state().publicApiActiveState(true)) {
             throw new IgniteException("Can not perform the operation because the cluster is inactive. Note, that " +
                 "the cluster is considered inactive by default if Ignite Persistent Store is used to let all the nodes " +
-                "join the cluster. To activate the cluster call Ignite.active(true).");
+                "join the cluster. To activate the cluster call Ignite.cluster().state(ClusterState.ACTIVE).");
         }
     }
 
@@ -3195,8 +3163,7 @@ public class IgniteKernal implements IgniteEx, Externalizable {
             GridComponent comp = it.previous();
 
             try {
-                if (!skipDaemon(comp))
-                    comp.onDisconnected(userFut);
+                comp.onDisconnected(userFut);
             }
             catch (IgniteCheckedException e) {
                 err = e;
@@ -3432,14 +3399,6 @@ public class IgniteKernal implements IgniteEx, Externalizable {
         }
     }
 
-    /**
-     * @param comp Grid component.
-     * @return {@code true} if node running in daemon mode and component marked by {@code SkipDaemon} annotation.
-     */
-    private boolean skipDaemon(GridComponent comp) {
-        return ctx.isDaemon() && U.hasAnnotation(comp.getClass(), SkipDaemon.class);
-    }
-
     /** Dumps debug information for the current node. */
     public void dumpDebugInfo() {
         try {
@@ -3490,6 +3449,18 @@ public class IgniteKernal implements IgniteEx, Externalizable {
      */
     public IgniteInternalFuture sendIoTest(List<ClusterNode> nodes, byte[] payload, boolean procFromNioThread) {
         return ctx.io().sendIoTest(nodes, payload, procFromNioThread);
+    }
+
+    /** Registers configuration system view. */
+    private void registerConfigurationSystemView() {
+        ctx.systemView().registerInnerCollectionView(
+            CFG_VIEW,
+            CFG_VIEW_DESC,
+            new ConfigurationViewWalker(),
+            singleton(ctx.config()),
+            IgniteConfigurationIterable::new,
+            (cfg, view) -> view
+        );
     }
 
     /**

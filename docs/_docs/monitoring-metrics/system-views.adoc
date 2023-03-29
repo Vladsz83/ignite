@@ -311,7 +311,6 @@ The NODES view contains information about the cluster nodes.
 |CONSISTENT_ID |VARCHAR |Node's consistent ID.
 |HOSTNAMES |VARCHAR |The host names of the node.
 |IS_CLIENT |BOOLEAN |Indicates whether the node is a client.
-|IS_DAEMON |BOOLEAN |Indicates whether the node is a daemon node.
 |NODE_ID |UUID |Node ID.
 |NODE_ORDER |INT |Node order within the topology.
 |VERSION |VARCHAR |Node version.
@@ -329,6 +328,20 @@ The NODE_ATTRIBUTES view contains the attributes of all nodes.
 
 |NODE_ID |UUID |Node ID.
 |NAME |VARCHAR |Attribute name.
+
+|===
+
+== CONFIGURATION
+
+
+The CONFIGURATION view contains the configuration properties of node.
+
+[{table_opts}]
+|===
+| Column |Data Type |Description
+
+|NAME |VARCHAR |Configuration property name.
+|VALUE |VARCHAR |Configuration property value.
 
 |===
 
@@ -730,6 +743,17 @@ This view exposes information about all available binary types.
 == METASTORAGE
 
 This view exposes the contents of the metastorage cache.
+
+[{table_opts}]
+|===
+|Column | Data type |  Description
+|NAME | string | Name
+|VALUE | string | String or raw binary (if data could not be deserialized for some reason) representation of an element
+|===
+
+== DISTRIBUTED_METASTORAGE
+
+This view exposes the contents of the distributed metastorage cache.
 
 [{table_opts}]
 |===

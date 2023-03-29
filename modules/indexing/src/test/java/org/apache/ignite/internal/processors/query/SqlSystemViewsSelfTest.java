@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 import javax.cache.Cache;
@@ -86,7 +87,9 @@ import org.junit.Test;
 
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toSet;
+import static org.apache.ignite.events.EventType.EVT_CONSISTENCY_VIOLATION;
 import static org.apache.ignite.internal.processors.cache.persistence.metastorage.MetaStorage.METASTORAGE_CACHE_NAME;
+import static org.apache.ignite.internal.util.IgniteUtils.MB;
 import static org.apache.ignite.testframework.GridTestUtils.waitForCondition;
 import static org.junit.Assert.assertNotEquals;
 
@@ -341,7 +344,7 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
 
         IgniteEx srv = startGrid(getConfiguration());
 
-        srv.cluster().active(true);
+        srv.cluster().state(ClusterState.ACTIVE);
 
         String cacheName1 = "CACHE_1";
         String cacheSqlName1 = "SQL_PUBLIC_" + cacheName1;
@@ -371,7 +374,7 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
 
         srv = startGrid(getConfiguration());
 
-        srv.cluster().active(true);
+        srv.cluster().state(ClusterState.ACTIVE);
 
         checkIndexRebuild(cacheName1, true);
         checkIndexRebuild(cacheName2, true);
@@ -697,23 +700,21 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
         Ignite igniteCli =
             startClientGrid(getTestIgniteInstanceName(1), getConfiguration().setMetricsUpdateFrequency(500L));
 
-        startGrid(getTestIgniteInstanceName(2), getConfiguration().setMetricsUpdateFrequency(500L).setDaemon(true));
-
         UUID nodeId0 = igniteSrv.cluster().localNode().id();
 
         awaitPartitionMapExchange();
 
-        List<List<?>> resAll = execSql("SELECT NODE_ID, CONSISTENT_ID, VERSION, IS_CLIENT, IS_DAEMON, " +
+        List<List<?>> resAll = execSql("SELECT NODE_ID, CONSISTENT_ID, VERSION, IS_CLIENT, " +
             "NODE_ORDER, ADDRESSES, HOSTNAMES FROM " + systemSchemaName() + ".NODES");
 
-        assertColumnTypes(resAll.get(0), UUID.class, String.class, String.class, Boolean.class, Boolean.class,
+        assertColumnTypes(resAll.get(0), UUID.class, String.class, String.class, Boolean.class,
             Long.class, String.class, String.class);
 
-        assertEquals(3, resAll.size());
+        assertEquals(2, resAll.size());
 
         List<List<?>> resSrv = execSql(
             "SELECT NODE_ID, NODE_ORDER FROM " +
-                systemSchemaName() + ".NODES WHERE IS_CLIENT = FALSE AND IS_DAEMON = FALSE"
+                systemSchemaName() + ".NODES WHERE IS_CLIENT = FALSE"
         );
 
         assertEquals(1, resSrv.size());
@@ -731,30 +732,18 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
 
         assertEquals(2L, resCli.get(0).get(1));
 
-        List<List<?>> resDaemon = execSql(
-            "SELECT NODE_ID, NODE_ORDER FROM " + systemSchemaName() + ".NODES WHERE IS_DAEMON = TRUE");
-
-        assertEquals(1, resDaemon.size());
-
-        assertEquals(nodeId(2), resDaemon.get(0).get(0));
-
-        assertEquals(3L, resDaemon.get(0).get(1));
-
         // Check index on ID column.
         assertEquals(0, execSql("SELECT NODE_ID FROM " + systemSchemaName() + ".NODES WHERE NODE_ID = '-'").size());
 
         assertEquals(1, execSql("SELECT NODE_ID FROM " + systemSchemaName() + ".NODES WHERE NODE_ID = ?",
             nodeId0).size());
 
-        assertEquals(1, execSql("SELECT NODE_ID FROM " + systemSchemaName() + ".NODES WHERE NODE_ID = ?",
-            nodeId(2)).size());
-
         // Check index on ID column with disjunction.
-        assertEquals(3, execSql("SELECT NODE_ID FROM " + systemSchemaName() + ".NODES WHERE NODE_ID = ? " +
-            "OR node_order=1 OR node_order=2 OR node_order=3", nodeId0).size());
+        assertEquals(2, execSql("SELECT NODE_ID FROM " + systemSchemaName() + ".NODES WHERE NODE_ID = ? " +
+            "OR node_order=1 OR node_order=2", nodeId0).size());
 
         // Check quick-count.
-        assertEquals(3L, execSql("SELECT COUNT(*) FROM " + systemSchemaName() + ".NODES").get(0).get(0));
+        assertEquals(2L, execSql("SELECT COUNT(*) FROM " + systemSchemaName() + ".NODES").get(0).get(0));
 
         // Check joins
         assertEquals(nodeId0, execSql("SELECT N1.NODE_ID FROM " + systemSchemaName() + ".NODES N1 JOIN " +
@@ -777,7 +766,7 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
             execSql("SELECT NODE_ID FROM " + systemSchemaName() + ".NODE_ATTRIBUTES WHERE NAME = ? AND VALUE = 'true'",
                 cliAttrName).size());
 
-        assertEquals(3,
+        assertEquals(2,
             execSql("SELECT NODE_ID FROM " + systemSchemaName() + ".NODE_ATTRIBUTES WHERE NAME = ?", cliAttrName).size());
 
         assertEquals(1,
@@ -829,10 +818,10 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
             Integer.class, Long.class, Integer.class, Long.class, // Sent/received messages.
             Integer.class); // Outbound message queue.
 
-        assertEquals(3, resAll.size());
+        assertEquals(2, resAll.size());
 
         // Check join with nodes.
-        assertEquals(3, execSql("SELECT NM.LAST_UPDATE_TIME FROM " + systemSchemaName() + ".NODES N " +
+        assertEquals(2, execSql("SELECT NM.LAST_UPDATE_TIME FROM " + systemSchemaName() + ".NODES N " +
             "JOIN " + systemSchemaName() + ".NODE_METRICS NM ON N.NODE_ID = NM.NODE_ID").size());
 
         // Check index on NODE_ID column.
@@ -844,7 +833,7 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
             "-").size());
 
         // Check quick-count.
-        assertEquals(3L, execSql("SELECT COUNT(*) FROM " + systemSchemaName() + ".NODE_METRICS").get(0).get(0));
+        assertEquals(2L, execSql("SELECT COUNT(*) FROM " + systemSchemaName() + ".NODE_METRICS").get(0).get(0));
 
         // Check metric values.
 
@@ -969,7 +958,7 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
         startGrid(getTestIgniteInstanceName(1), getPdsConfiguration("node1")
             .setUserAttributes(F.asMap(customAttr, "val1")));
 
-        ignite.cluster().active(true);
+        ignite.cluster().state(ClusterState.ACTIVE);
 
         List<List<?>> res = execSql("SELECT CONSISTENT_ID, ONLINE FROM " +
             systemSchemaName() + ".BASELINE_NODES ORDER BY CONSISTENT_ID");
@@ -1144,7 +1133,7 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
     public void testIoStatisticsViews() throws Exception {
         Ignite ignite = startGrid(getTestIgniteInstanceName(), getPdsConfiguration("node0"));
 
-        ignite.cluster().active(true);
+        ignite.cluster().state(ClusterState.ACTIVE);
 
         execSql("CREATE TABLE TST(id INTEGER PRIMARY KEY, name VARCHAR, age integer)");
 
@@ -1421,7 +1410,7 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
 
         Ignite ignite1 = startGrid(getConfiguration().setDataStorageConfiguration(dsCfg).setIgniteInstanceName("node1"));
 
-        ignite0.cluster().active(true);
+        ignite0.cluster().state(ClusterState.ACTIVE);
 
         Ignite ignite2 = startGrid(getConfiguration().setDataStorageConfiguration(dsCfg).setIgniteInstanceName("node2"));
 
@@ -1705,6 +1694,49 @@ public class SqlSystemViewsSelfTest extends AbstractIndexingCommonTest {
             .collect(Collectors.toList());
 
         assertEqualsCollections(elevenExpVals, durationMetrics);
+    }
+
+    /** */
+    @Test
+    public void testConfigurationView() throws Exception {
+        IgniteConfiguration icfg = new IgniteConfiguration();
+
+        long expMaxSize = 10 * MB;
+
+        String expName = "my-instance";
+
+        String expDrName = "my-dr";
+
+        icfg.setIgniteInstanceName(expName)
+            .setIncludeEventTypes(EVT_CONSISTENCY_VIOLATION);
+        icfg.setDataStorageConfiguration(new DataStorageConfiguration()
+            .setDefaultDataRegionConfiguration(
+                new DataRegionConfiguration()
+                    .setLazyMemoryAllocation(false))
+            .setDataRegionConfigurations(
+                new DataRegionConfiguration()
+                    .setName(expDrName)
+                    .setMaxSize(expMaxSize)));
+
+        try (IgniteEx srv = startGrid(icfg)) {
+            srv.createCache(DEFAULT_CACHE_NAME);
+
+            BiConsumer<String, String> checker = (name, val) -> assertEquals(
+                val,
+                execSql(srv, "SELECT VALUE FROM SYS.CONFIGURATION WHERE NAME = ?", name).get(0).get(0)
+            );
+
+            checker.accept("IgniteInstanceName", expName);
+            checker.accept("DataStorageConfiguration.DefaultDataRegionConfiguration.LazyMemoryAllocation", "false");
+            checker.accept("DataStorageConfiguration.DataRegionConfigurations[0].Name", expDrName);
+            checker.accept(
+                "DataStorageConfiguration.DataRegionConfigurations[0].MaxSize",
+                Long.toString(expMaxSize)
+            );
+            checker.accept("CacheConfiguration[0].AtomicityMode", CacheAtomicityMode.TRANSACTIONAL.name());
+            checker.accept("AddressResolver", null);
+            checker.accept("IncludeEventTypes", "[" + EVT_CONSISTENCY_VIOLATION + ']');
+        }
     }
 
     /**

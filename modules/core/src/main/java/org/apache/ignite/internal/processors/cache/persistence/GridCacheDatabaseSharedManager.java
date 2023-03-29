@@ -48,7 +48,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.ignite.DataRegionMetrics;
 import org.apache.ignite.DataRegionMetricsProvider;
-import org.apache.ignite.DataStorageMetrics;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.IgniteInterruptedException;
@@ -164,7 +163,6 @@ import org.apache.ignite.lang.IgniteOutClosure;
 import org.apache.ignite.lang.IgnitePredicate;
 import org.apache.ignite.maintenance.MaintenanceRegistry;
 import org.apache.ignite.maintenance.MaintenanceTask;
-import org.apache.ignite.mxbean.DataStorageMetricsMXBean;
 import org.apache.ignite.spi.systemview.view.MetastorageView;
 import org.apache.ignite.transactions.TransactionState;
 import org.jetbrains.annotations.NotNull;
@@ -949,19 +947,6 @@ public class GridCacheDatabaseSharedManager extends IgniteCacheDatabaseSharedMan
     }
 
     /** {@inheritDoc} */
-    @Override protected void registerMetricsMBeans(IgniteConfiguration cfg) {
-        super.registerMetricsMBeans(cfg);
-
-        registerMetricsMBean(
-            cctx.kernalContext().config(),
-            MBEAN_GROUP,
-            MBEAN_NAME,
-            dsMetrics,
-            DataStorageMetricsMXBean.class
-        );
-    }
-
-    /** {@inheritDoc} */
     @Deprecated
     @Override protected IgniteOutClosure<Long> freeSpaceProvider(final DataRegionConfiguration dataRegCfg) {
         if (!dataRegCfg.isPersistenceEnabled())
@@ -1164,12 +1149,6 @@ public class GridCacheDatabaseSharedManager extends IgniteCacheDatabaseSharedMan
         checkpointManager.stop(cancel);
 
         super.onKernalStop0(cancel);
-
-        unregisterMetricsMBean(
-            cctx.gridConfig(),
-            MBEAN_GROUP,
-            MBEAN_NAME
-        );
 
         if (metaStorage != null)
             metaStorage.close();
@@ -3184,11 +3163,6 @@ public class GridCacheDatabaseSharedManager extends IgniteCacheDatabaseSharedMan
                 "[nodeId=" + ctx.localNodeId() + ", holder=" + lockInfo +
                 ", path=" + lockPath() + ']';
         }
-    }
-
-    /** {@inheritDoc} */
-    @Override public DataStorageMetrics persistentStoreMetrics() {
-        return new DataStorageMetricsSnapshot(dsMetrics);
     }
 
     /** {@inheritDoc} */
