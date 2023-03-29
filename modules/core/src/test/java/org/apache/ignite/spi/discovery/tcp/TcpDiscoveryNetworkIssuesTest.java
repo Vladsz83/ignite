@@ -27,11 +27,8 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.apache.ignite.Ignite;
-import org.apache.ignite.IgniteCheckedException;
-import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.managers.GridManagerAdapter;
@@ -45,8 +42,6 @@ import org.apache.ignite.spi.communication.CommunicationSpi;
 import org.apache.ignite.spi.communication.tcp.internal.GridNioServerWrapper;
 import org.apache.ignite.spi.discovery.DiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
-import org.apache.ignite.spi.discovery.tcp.messages.TcpDiscoveryAbstractMessage;
-import org.apache.ignite.spi.discovery.tcp.messages.TcpDiscoveryNodeAddedMessage;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.junit.Test;
@@ -140,30 +135,6 @@ public class TcpDiscoveryNetworkIssuesTest extends GridCommonAbstractTest {
         cfg.setSystemWorkerBlockedTimeout(10_000);
 
         return cfg;
-    }
-
-    @Test
-    /**
-     * @throws Exception If failed.
-     */
-    public void testLostNodeAddedMessage() throws Exception {
-        AtomicInteger dropped = new AtomicInteger();
-
-        specialSpi = new DropTcpDiscoverySpi(dropped);
-
-        IgniteEx ig0 = startGrid(NODE_0_NAME);
-
-        specialSpi = new DropTcpDiscoverySpi(dropped);
-
-        IgniteEx ig1 = startGrid(NODE_1_NAME);
-
-        specialSpi = null;
-
-        dropped.set(1);
-
-        Ignite ig2 = startGrid(NODE_2_NAME);
-
-        waitForRemoteNodes(ig0, 3);
     }
 
     /**
@@ -349,73 +320,5 @@ public class TcpDiscoveryNetworkIssuesTest extends GridCommonAbstractTest {
 
         for (GridWorker worker : nioServerWrapper.nio().workers())
             proc.accept(worker.runner());
-    }
-
-    /**
-     * Emulates situation when network drops {@code dropCnt} of {@link TcpDiscoveryNodeAddedMessage} messages.
-     */
-    private static class DropTcpDiscoverySpi extends TcpDiscoverySpi {
-
-        /** Number of messages to be dropped */
-        private AtomicInteger dropCnt;
-
-        /** */
-        public DropTcpDiscoverySpi(AtomicInteger dropCnt) {
-            this.dropCnt = dropCnt;
-        }
-
-        /** {@inheritDoc} */
-        @Override protected void writeToSocket(Socket sock, TcpDiscoveryAbstractMessage msg, byte[] data,
-            long timeout) throws IOException {
-            if (doDrop(msg, sock))
-                return;
-
-            super.writeToSocket(sock, msg, data, timeout);
-        }
-
-        /** {@inheritDoc} */
-        @Override protected void writeToSocket(Socket sock, TcpDiscoveryAbstractMessage msg,
-            long timeout) throws IOException, IgniteCheckedException {
-            if (doDrop(msg, sock))
-                return;
-
-            super.writeToSocket(sock, msg, timeout);
-        }
-
-        /** {@inheritDoc} */
-        @Override protected void writeToSocket(ClusterNode node, Socket sock, OutputStream out,
-            TcpDiscoveryAbstractMessage msg, long timeout) throws IOException, IgniteCheckedException {
-
-            if (doDrop(msg, sock))
-                return;
-
-            super.writeToSocket(node, sock, out, msg, timeout);
-        }
-
-        /** {@inheritDoc} */
-        @Override protected void writeToSocket(Socket sock, OutputStream out, TcpDiscoveryAbstractMessage msg,
-            long timeout) throws IOException, IgniteCheckedException {
-            if (doDrop(msg, sock))
-                return;
-
-            super.writeToSocket(sock, out, msg, timeout);
-        }
-
-        /** {@inheritDoc} */
-        @Override protected void writeToSocket(TcpDiscoveryAbstractMessage msg, Socket sock, int res,
-            long timeout) throws IOException {
-            if (doDrop(msg, sock))
-                return;
-
-            super.writeToSocket(msg, sock, res, timeout);
-        }
-
-        /** */
-        private boolean doDrop(TcpDiscoveryAbstractMessage msg, Socket sock) {
-            if (msg instanceof TcpDiscoveryNodeAddedMessage && sock.getPort() == NODE_2_PORT)
-                return dropCnt.getAndUpdate(v -> Math.max(0, v - 1)) > 0;
-
-            return false;
-        }
     }
 }

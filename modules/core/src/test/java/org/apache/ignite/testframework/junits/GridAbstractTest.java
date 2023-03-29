@@ -1699,13 +1699,11 @@ public abstract class GridAbstractTest extends JUnitAssertAware {
     @SuppressWarnings({"BusyWait"})
     protected void waitForRemoteNodes(Ignite ignite, int cnt) throws IgniteCheckedException {
         while (true) {
-            Collection<ClusterNode> nodes = ignite.cluster().forRemotes().nodes();
-
-            if (nodes != null && nodes.size() >= cnt)
+            if (ignite.cluster().nodes().size() == cnt)
                 return;
 
             try {
-                Thread.sleep(100);
+                Thread.sleep(300);
             }
             catch (InterruptedException ignored) {
                 throw new IgniteCheckedException("Interrupted while waiting for remote nodes [igniteInstanceName=" +

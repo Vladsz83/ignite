@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -28,6 +27,14 @@ public class TcpDiscoveryMissingNodeAddedMessageTest extends GridCommonAbstractT
     /** */
     private static final int NODE_2_PORT = 47502;
 
+    /** */
+    private static final String NODE_0_NAME = "node00-" + NODE_0_PORT;
+
+    /** */
+    private static final String NODE_1_NAME = "node01-" + NODE_1_PORT;
+
+    /** */
+    private static final String NODE_2_NAME = "node02-" + NODE_2_PORT;
 
     /** */
     private TcpDiscoveryVmIpFinder ipFinder = new TcpDiscoveryVmIpFinder(true);
@@ -62,17 +69,19 @@ public class TcpDiscoveryMissingNodeAddedMessageTest extends GridCommonAbstractT
 
         specialSpi = new DropTcpDiscoverySpi(dropped);
 
-        IgniteEx ig0 = startGrid(0);
+        IgniteEx ig0 = startGrid(NODE_0_NAME);
 
         specialSpi = null;
 
-        startGrid(1);
+        startGrid(NODE_1_NAME);
+
+        waitForRemoteNodes(ig0, 2);
 
         dropped.set(1);
 
-        startGrid(2);
+        IgniteEx ig2 = startGrid(NODE_2_NAME);
 
-        waitForRemoteNodes(ig0, 2);
+        waitForRemoteNodes(ig0, 3);
     }
 
     /**
