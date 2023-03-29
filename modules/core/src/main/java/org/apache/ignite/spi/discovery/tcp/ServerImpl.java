@@ -5596,9 +5596,6 @@ class ServerImpl extends TcpDiscoveryImpl {
                 }
 
                 synchronized (mux) {
-                    if(joiningNodes.contains(leftNode.id()))
-                        nodesIdsHist.remove(leftNode.id());
-
                     joiningNodes.remove(leftNode.id());
                 }
 
