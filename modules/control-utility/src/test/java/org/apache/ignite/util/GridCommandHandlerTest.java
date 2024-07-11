@@ -133,6 +133,7 @@ import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.metric.MetricRegistry;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.apache.ignite.spi.communication.tcp.TcpCommunicationSpi;
+import org.apache.ignite.spi.discovery.tcp.BlockTcpDiscoverySpi;
 import org.apache.ignite.spi.metric.LongMetric;
 import org.apache.ignite.spi.metric.Metric;
 import org.apache.ignite.testframework.GridTestUtils;
@@ -164,6 +165,7 @@ import static org.apache.ignite.internal.commandline.CommandHandler.EXIT_CODE_OK
 import static org.apache.ignite.internal.commandline.CommandHandler.EXIT_CODE_UNEXPECTED_ERROR;
 import static org.apache.ignite.internal.encryption.AbstractEncryptionTest.MASTER_KEY_NAME_2;
 import static org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager.IGNITE_PDS_SKIP_CHECKPOINT_ON_NODE_STOP;
+import static org.apache.ignite.internal.processors.cache.persistence.snapshot.AbstractSnapshotSelfTest.SNAPSHOT_NAME;
 import static org.apache.ignite.internal.processors.cache.persistence.snapshot.AbstractSnapshotSelfTest.doSnapshotCancellationTest;
 import static org.apache.ignite.internal.processors.cache.persistence.snapshot.AbstractSnapshotSelfTest.snp;
 import static org.apache.ignite.internal.processors.cache.persistence.snapshot.IgniteSnapshotManager.SNAPSHOT_LIMITED_TRANSFER_BLOCK_SIZE_BYTES;
@@ -3692,6 +3694,43 @@ public class GridCommandHandlerTest extends GridCommandHandlerClusterPerMethodAb
         finally {
             U.delete(snpDir);
         }
+    }
+
+    /** Tests snapshot status when snapshot is being checked before restoration. */
+    @Test
+    public void testSnapshotCheckOnRestoreStatus() throws Exception {
+        Ignite client = null;
+
+        AtomicBoolean block = new AtomicBoolean();
+
+        for (int i = 0; i < 3; ++i) {
+            IgniteConfiguration cfg = getConfiguration(getTestIgniteInstanceName(i));
+
+            BlockTcpDiscoverySpi blockSpi = new BlockTcpDiscoverySpi();
+
+            blockSpi.setClosure((node, msg)->{
+                waitForCondition(()->!block.get(), getTestTimeout());
+            });
+
+            cfg.setDiscoverySpi(blockSpi);
+
+            if (i > 1)
+                cfg.setClientMode(true);
+
+            client = startGrid(cfg);
+        }
+
+        client.cluster().state(ACTIVE);
+
+        createCacheAndPreload(client, 1024);
+
+        client.snapshot().createSnapshot(SNAPSHOT_NAME).get();
+
+        client.destroyCache(DEFAULT_CACHE_NAME);
+
+        awaitPartitionMapExchange();
+
+        ((BlockTcpDiscoverySpi)grid(0).configuration().getDiscoverySpi())
     }
 
     /** @throws Exception If fails. */
