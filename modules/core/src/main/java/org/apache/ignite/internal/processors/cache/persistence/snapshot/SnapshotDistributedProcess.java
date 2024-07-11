@@ -60,12 +60,9 @@ import static org.apache.ignite.internal.util.distributed.DistributedProcess.Dis
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.SNAPSHOT_VALIDATE_PARTS;
 
 /** Distributed process of snapshot checking (with the partition hashes). */
-public class SnapshotCheckDistributedProcess {
+public class SnapshotDistributedProcess {
     /** */
     private static final String METRIC_REG_NAME_PREF = metricName(SNAPSHOT_METRICS, "check");
-
-    /** */
-    private static final IgniteInternalFuture FINISHED_FUT = new GridFinishedFuture<>();
 
     /** */
     static final String METRIC_NAME_TOTAL = "total";
@@ -104,7 +101,7 @@ public class SnapshotCheckDistributedProcess {
     private final DistributedProcess<SnapshotCheckProcessRequest, HashMap<PartitionKeyV2, PartitionHashRecordV2>> phase2PartsHashes;
 
     /** */
-    public SnapshotCheckDistributedProcess(GridKernalContext kctx) {
+    public SnapshotDistributedProcess(GridKernalContext kctx) {
         this.kctx = kctx;
 
         log = kctx.log(getClass());
@@ -156,7 +153,7 @@ public class SnapshotCheckDistributedProcess {
     ) {
         clean(procId, null, results, errors);
 
-        return FINISHED_FUT;
+        return new GridFinishedFuture<>();
     }
 
     /** Phase 2 beginning.  */
@@ -165,7 +162,7 @@ public class SnapshotCheckDistributedProcess {
         SnapshotCheckProcessRequest locReq;
 
         if (stopAndCleanOnError(incReq, null) || (locReq = requests.get(incReq.snapshotName())) == null)
-            return FINISHED_FUT;
+            return new GridFinishedFuture<>();
 
         assert locReq.equals(incReq);
 
@@ -177,7 +174,7 @@ public class SnapshotCheckDistributedProcess {
 
         // Local meta might be null if current node started after the snapshot creation or placement.
         if (!incReq.nodes.contains(kctx.localNodeId()) || locReq.meta() == null)
-            return FINISHED_FUT;
+            return new GridFinishedFuture<>();
 
         GridFutureAdapter<HashMap<PartitionKeyV2, PartitionHashRecordV2>> locPartsChkFut = new GridFutureAdapter<>();
 
@@ -249,7 +246,7 @@ public class SnapshotCheckDistributedProcess {
         GridFutureAdapter<SnapshotPartitionsVerifyTaskResult> clusterOpFut = clusterOpFuts.remove(rqId);
 
         stopFutureOnAnyFailure(clusterOpFut, () -> {
-            SnapshotCheckProcessRequest locRq = curRequest(null, rqId);
+            SnapshotCheckProcessRequest locRq = currentRequest(null, rqId);
 
             Throwable err = opErr;
 
@@ -338,7 +335,7 @@ public class SnapshotCheckDistributedProcess {
      * @param procId  If {@code snpName} is {@code null}, is used to find the operation request.
      * @return Current snapshot checking request by {@code snpName} or {@code procId}.
      */
-    private @Nullable SnapshotCheckProcessRequest curRequest(@Nullable String snpName, UUID procId) {
+    private @Nullable SnapshotCheckProcessRequest currentRequest(@Nullable String snpName, UUID procId) {
         return snpName == null
             ? requests.values().stream().filter(rq -> rq.requestId().equals(procId)).findFirst().orElse(null)
             : requests.get(snpName);
@@ -363,7 +360,7 @@ public class SnapshotCheckDistributedProcess {
                     + ". Current node is not required.");
             }
 
-            return FINISHED_FUT;
+            return new GridFinishedFuture<>();
         }
 
         registerMetrics(locReq);
@@ -419,7 +416,7 @@ public class SnapshotCheckDistributedProcess {
         Map<UUID, ? extends List<SnapshotMetadata>> results,
         Map<UUID, Throwable> errors
     ) {
-        SnapshotCheckProcessRequest locReq = curRequest(snpName(results), procId);
+        SnapshotCheckProcessRequest locReq = currentRequest(snpName(results), procId);
 
         assert locReq == null || locReq.opCoordId != null;
 
