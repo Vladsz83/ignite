@@ -39,6 +39,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -116,8 +117,10 @@ import org.apache.ignite.internal.processors.cluster.GridClusterStateProcessor;
 import org.apache.ignite.internal.processors.datastreamer.DataStreamerRequest;
 import org.apache.ignite.internal.processors.metric.MetricRegistryImpl;
 import org.apache.ignite.internal.util.BasicRateLimiter;
+import org.apache.ignite.internal.util.distributed.FullMessage;
 import org.apache.ignite.internal.util.distributed.SingleNodeMessage;
 import org.apache.ignite.internal.util.future.IgniteFinishedFutureImpl;
+import org.apache.ignite.internal.util.future.IgniteFutureImpl;
 import org.apache.ignite.internal.util.lang.GridAbsPredicate;
 import org.apache.ignite.internal.util.lang.GridFunc;
 import org.apache.ignite.internal.util.typedef.F;
@@ -167,6 +170,7 @@ import static org.apache.ignite.internal.encryption.AbstractEncryptionTest.MASTE
 import static org.apache.ignite.internal.processors.cache.persistence.GridCacheDatabaseSharedManager.IGNITE_PDS_SKIP_CHECKPOINT_ON_NODE_STOP;
 import static org.apache.ignite.internal.processors.cache.persistence.snapshot.AbstractSnapshotSelfTest.SNAPSHOT_NAME;
 import static org.apache.ignite.internal.processors.cache.persistence.snapshot.AbstractSnapshotSelfTest.doSnapshotCancellationTest;
+import static org.apache.ignite.internal.processors.cache.persistence.snapshot.AbstractSnapshotSelfTest.injectPausedReadsIo;
 import static org.apache.ignite.internal.processors.cache.persistence.snapshot.AbstractSnapshotSelfTest.snp;
 import static org.apache.ignite.internal.processors.cache.persistence.snapshot.IgniteSnapshotManager.SNAPSHOT_LIMITED_TRANSFER_BLOCK_SIZE_BYTES;
 import static org.apache.ignite.internal.processors.cache.persistence.snapshot.IgniteSnapshotManager.SNAPSHOT_METRICS;
@@ -175,6 +179,8 @@ import static org.apache.ignite.internal.processors.cache.persistence.snapshot.I
 import static org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotRestoreProcess.SNAPSHOT_RESTORE_METRICS;
 import static org.apache.ignite.internal.processors.cache.verify.IdleVerifyUtility.GRID_NOT_IDLE_MSG;
 import static org.apache.ignite.internal.processors.diagnostic.DiagnosticProcessor.DEFAULT_TARGET_FOLDER;
+import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_START;
+import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.SNAPSHOT_CHECK_METAS;
 import static org.apache.ignite.testframework.GridTestUtils.assertContains;
 import static org.apache.ignite.testframework.GridTestUtils.assertNotContains;
 import static org.apache.ignite.testframework.GridTestUtils.assertThrows;
@@ -3699,25 +3705,47 @@ public class GridCommandHandlerTest extends GridCommandHandlerClusterPerMethodAb
     /** Tests snapshot status when snapshot is being checked before restoration. */
     @Test
     public void testSnapshotCheckOnRestoreStatus() throws Exception {
+        int servers = 3;
+
         Ignite client = null;
 
-        AtomicBoolean block = new AtomicBoolean();
+        AtomicInteger blockType = new AtomicInteger(-1);
+        AtomicBoolean msgBlocked = new AtomicBoolean();
 
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < servers + 1; ++i) {
             IgniteConfiguration cfg = getConfiguration(getTestIgniteInstanceName(i));
 
             BlockTcpDiscoverySpi blockSpi = new BlockTcpDiscoverySpi();
 
-            blockSpi.setClosure((node, msg)->{
-                waitForCondition(()->!block.get(), getTestTimeout());
-            });
+            if (i == 0) {
+                // Blocks distributed process result processing
+                blockSpi.setClosure((node, msg) -> {
+                    if (msg instanceof FullMessage && ((FullMessage)msg).type() == blockType.get()) {
+                        msgBlocked.set(true);
+
+                        try {
+                            waitForCondition(() -> ((FullMessage)msg).type() != blockType.get(), getTestTimeout());
+                        }
+                        catch (IgniteInterruptedCheckedException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+
+                    return null;
+                });
+            }
 
             cfg.setDiscoverySpi(blockSpi);
 
-            if (i > 1)
+            cfg.setCommunicationSpi(new TestRecordingCommunicationSpi());
+
+            if (i >= servers) {
                 cfg.setClientMode(true);
 
-            client = startGrid(cfg);
+                client = startGrid(cfg);
+            }
+            else
+                startGrid(cfg);
         }
 
         client.cluster().state(ACTIVE);
@@ -3730,7 +3758,67 @@ public class GridCommandHandlerTest extends GridCommandHandlerClusterPerMethodAb
 
         awaitPartitionMapExchange();
 
-        ((BlockTcpDiscoverySpi)grid(0).configuration().getDiscoverySpi())
+        blockType.set(SNAPSHOT_CHECK_METAS.ordinal());
+
+        IgniteFutureImpl<?> fut = snp(grid(1)).restoreSnapshot(SNAPSHOT_NAME, null, null, 0, true);
+
+        waitForCondition(() -> msgBlocked.get(), getTestTimeout());
+
+        injectTestSystemOut();
+
+        assertEquals(EXIT_CODE_OK, execute("--snapshot", "status"));
+
+        String out = testOut.toString();
+
+        assertContains(null, out, "Snapshot check operation is in progress.");
+        assertNotContains(null, out, "Restore snapshot operation is in progress.");
+        assertContains(null, out, "unknown");
+        assertNotContains(null, out, "0%");
+
+        testOut.reset();
+
+        AtomicBoolean pauseIO = new AtomicBoolean(true);
+
+        Set<UUID> pausedNodes = ConcurrentHashMap.newKeySet();
+
+        injectPausedReadsIo(
+            G.allGrids(),
+            pauseIO,
+            grid -> pausedNodes.add(grid.cluster().localNode().id()),
+            null
+        );
+
+        msgBlocked.set(false);
+        blockType.set(-1);
+
+        waitForCondition(() -> pausedNodes.size() == servers, getTestTimeout());
+
+        assertEquals(EXIT_CODE_OK, execute("--snapshot", "status"));
+
+        out = testOut.toString();
+
+        assertContains(null, out, "Snapshot check operation is in progress.");
+        assertNotContains(null, out, "unknown");
+        assertNotContains(null, out, "100%");
+        assertContains(null, out, "0%");
+
+        blockType.set(RESTORE_CACHE_GROUP_SNAPSHOT_START.ordinal());
+
+        pauseIO.set(false);
+
+        waitForCondition(() -> msgBlocked.get(), getTestTimeout());
+
+        assertEquals(EXIT_CODE_OK, execute("--snapshot", "status"));
+
+        out = testOut.toString();
+
+        assertContains(null, out, "Restore snapshot operation is in progress.");
+        assertNotContains(null, out, "unknown");
+        assertContains(null, out, "100%");
+
+        blockType.set(-1);
+
+        fut.get();
     }
 
     /** @throws Exception If fails. */

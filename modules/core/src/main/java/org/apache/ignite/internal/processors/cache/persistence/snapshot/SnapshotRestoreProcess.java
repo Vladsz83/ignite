@@ -85,6 +85,7 @@ import org.apache.ignite.internal.processors.cache.persistence.tree.io.PageIO;
 import org.apache.ignite.internal.processors.cluster.DiscoveryDataClusterState;
 import org.apache.ignite.internal.processors.compress.CompressionProcessor;
 import org.apache.ignite.internal.util.distributed.DistributedProcess;
+import org.apache.ignite.internal.util.distributed.InitMessage;
 import org.apache.ignite.internal.util.future.GridFinishedFuture;
 import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.future.IgniteFinishedFutureImpl;
@@ -115,6 +116,7 @@ import static org.apache.ignite.internal.util.distributed.DistributedProcess.Dis
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_START;
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_CACHE_GROUP_SNAPSHOT_STOP;
 import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.RESTORE_INCREMENTAL_SNAPSHOT_START;
+import static org.apache.ignite.internal.util.distributed.DistributedProcess.DistributedProcessType.SNAPSHOT_CHECK_METAS;
 
 /**
  * Distributed process to restore cache group from the snapshot.
@@ -199,6 +201,25 @@ public class SnapshotRestoreProcess {
 
         rollbackRestoreProc = new DistributedProcess<>(
             ctx, RESTORE_CACHE_GROUP_SNAPSHOT_ROLLBACK, this::rollback, this::finishRollback);
+
+        watchCheckBeforeRestoration();
+    }
+
+    /** */
+    private void watchCheckBeforeRestoration() {
+        ctx.discovery().setCustomEventListener(InitMessage.class, (top, sndr, msg) -> {
+            assert msg.type() != SNAPSHOT_CHECK_METAS.ordinal() || msg.request() instanceof SnapshotCheckProcessRequest;
+
+            if (msg.type() != SNAPSHOT_CHECK_METAS.ordinal())
+                return;
+
+            SnapshotCheckProcessRequest checkRq = (SnapshotCheckProcessRequest)msg.request();
+
+            if (!checkRq.nodes().contains(ctx.localNodeId()) || checkRq.relatedProcId == null)
+                return;
+
+            lastOpCtx = new SnapshotRestoreContext(checkRq, checkRq.relatedProcId, System.currentTimeMillis());
+        });
     }
 
     /**
@@ -249,6 +270,7 @@ public class SnapshotRestoreProcess {
             "The number of processed WAL segments in the incremental snapshot on this node.");
         mreg.register("processedWalEntries", () -> Optional.ofNullable(lastOpCtx.processedWalEntries).map(LongAdder::sum).orElse(-1L),
             "The number of processed entries from incremental snapshot on this node.");
+        mreg.register("checking", () -> lastOpCtx.checking, "Shows if snapshot is currently being checked before restoration.");
     }
 
     /**
@@ -333,7 +355,7 @@ public class SnapshotRestoreProcess {
 
         snpMgr.recordSnapshotEvent(snpName, msg, EventType.EVT_CLUSTER_SNAPSHOT_RESTORE_STARTED);
 
-        snpMgr.checkSnapshot(snpName, snpPath, cacheGrpNames, true, incIdx, check).listen(f -> {
+        snpMgr.checkSnapshot(snpName, snpPath, cacheGrpNames, true, incIdx, check, fut0.rqId).listen(f -> {
             if (f.error() != null) {
                 finishProcess(fut0.rqId, f.error());
 
@@ -648,7 +670,8 @@ public class SnapshotRestoreProcess {
                 ", caches=" + req.groups() + ']');
         }
 
-        SnapshotRestoreContext opCtx0 = new SnapshotRestoreContext(req);
+        SnapshotRestoreContext prev = lastOpCtx;
+        SnapshotRestoreContext opCtx0 = prev;
 
         try {
             if (opCtx != null) {
@@ -656,7 +679,10 @@ public class SnapshotRestoreProcess {
                     "The previous snapshot restore operation was not completed.");
             }
 
-            lastOpCtx = opCtx0;
+            if (!prev.reqId.equals(req.requestId()))
+                opCtx0 = new SnapshotRestoreContext(req);
+
+            opCtx0.checking = false;
 
             DiscoveryDataClusterState state = ctx.state().clusterState();
             IgniteSnapshotManager snpMgr = ctx.cache().context().snapshotMgr();
@@ -1910,6 +1936,9 @@ public class SnapshotRestoreProcess {
         /** Number of processed entries in incremental snapshot. */
         private volatile LongAdder processedWalEntries;
 
+        /** If {@code true}, the snapshot is being checked before restiration. */
+        private volatile boolean checking;
+
         /** Creates an empty context. */
         protected SnapshotRestoreContext() {
             reqId = null;
@@ -1924,14 +1953,24 @@ public class SnapshotRestoreProcess {
         /**
          * @param req Request to prepare cache group restore from the snapshot.
          */
-        protected SnapshotRestoreContext(SnapshotOperationRequest req) {
-            reqId = req.requestId();
+        protected SnapshotRestoreContext(AbstractSnapshotOperationRequest req) {
+            this(req, req.requestId(), req.startTime());
+        }
+
+        /**
+         * @param req Request to prepare cache group restore from the snapshot.
+         * @param reqId Process/request id to override {@link AbstractSnapshotOperationRequest#requestId()} ()}.
+         * @param startTime Start time to override {@link AbstractSnapshotOperationRequest#startTime()}.
+         */
+        protected SnapshotRestoreContext(AbstractSnapshotOperationRequest req, UUID reqId, long startTime) {
+            this.reqId = reqId;
             snpName = req.snapshotName();
             snpPath = req.snapshotPath();
             opNodeId = req.operationalNodeId();
             incIdx = req.incrementIndex();
-            startTime = U.currentTimeMillis();
+            this.startTime = startTime;
             nodes = req.nodes();
+            checking = req instanceof SnapshotCheckProcessRequest;
         }
 
         /**

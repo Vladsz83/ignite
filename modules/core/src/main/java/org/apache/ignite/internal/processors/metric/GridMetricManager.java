@@ -514,6 +514,11 @@ public class GridMetricManager extends GridManagerAdapter<MetricExporterSpi> imp
         }
     }
 
+    /** */
+    public ReadOnlyMetricRegistry findRegistry(String regName) {
+        return registries.get(regName);
+    }
+
     /**
      * @param name Metric name.
      * @param type Metric type.

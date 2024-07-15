@@ -65,22 +65,25 @@ public class SnapshotCheckProcess {
     private static final String METRIC_REG_NAME_PREF = metricName(SNAPSHOT_METRICS, "check");
 
     /** */
-    static final String METRIC_NAME_TOTAL = "total";
+    public static final String METRIC_NAME_TOTAL = "total";
 
     /** */
-    static final String METRIC_NAME_PROCESSED = "processed";
+    public static final String METRIC_NAME_PROCESSED = "processed";
     /** */
 
-    static final String METRIC_NAME_PROGRESS = "progress";
+    public static final String METRIC_NAME_PROGRESS = "progress";
 
     /** */
-    static final String METRIC_NAME_START_TIME = "startTime";
+    public static final String METRIC_NAME_START_TIME = "startTime";
 
     /** */
-    static final String METRIC_NAME_RQ_ID = "requestId";
+    public static final String METRIC_NAME_RQ_ID = "requestId";
 
     /** */
-    static final String METRIC_NAME_SNP_NAME = "snapshotName";
+    public static final String METRIC_NAME_SNP_NAME = "snapshotName";
+
+//    /** */
+//    public static final String METRIC_NAME_SNP_NAME = "snapshotName";
 
     /** */
     private final IgniteLogger log;
@@ -290,6 +293,8 @@ public class SnapshotCheckProcess {
         if (locWorkingFut != null)
             finished = err == null ? locWorkingFut.onDone() : locWorkingFut.onDone(err);
 
+        System.err.println("TEST | remove metrics");
+
         kctx.metric().remove(metricsRegName(locRq.snapshotName()));
 
         requests.remove(locRq.snapshotName());
@@ -301,7 +306,7 @@ public class SnapshotCheckProcess {
     }
 
     /** */
-    static String metricsRegName(String snpName) {
+    public static String metricsRegName(String snpName) {
         return metricName(METRIC_REG_NAME_PREF, snpName);
     }
 
@@ -362,13 +367,13 @@ public class SnapshotCheckProcess {
 
         registerMetrics(locReq);
 
+        IgniteSnapshotManager snpMgr = kctx.cache().context().snapshotMgr();
+
         GridFutureAdapter<ArrayList<SnapshotMetadata>> locMetasChkFut = new GridFutureAdapter<>();
 
         assert locReq.fut() == null;
 
         locReq.fut(locMetasChkFut);
-
-        IgniteSnapshotManager snpMgr = kctx.cache().context().snapshotMgr();
 
         snpMgr.snapshotExecutorService().submit(() -> stopFutureOnAnyFailure(locMetasChkFut, () -> {
             if (log.isDebugEnabled())
@@ -501,7 +506,8 @@ public class SnapshotCheckProcess {
         String snpName,
         @Nullable String snpPath,
         @Nullable Collection<String> grpNames,
-        boolean inclCstHndlrs
+        boolean inclCstHndlrs,
+        @Nullable UUID restoreProcId
     ) {
         assert !F.isEmpty(snpName);
 
@@ -524,7 +530,8 @@ public class SnapshotCheckProcess {
                 grpNames,
                 0,
                 inclCstHndlrs,
-                true
+                true,
+                restoreProcId
             );
 
             phase1CheckMetas.start(req.requestId(), req);
@@ -539,8 +546,7 @@ public class SnapshotCheckProcess {
     private void registerMetrics(SnapshotCheckProcessRequest rq) {
         MetricRegistryImpl mreg = kctx.metric().registry(metricsRegName(rq.snapshotName()));
 
-        assert mreg.findMetric(METRIC_NAME_START_TIME) == null;
-        assert mreg.findMetric(METRIC_NAME_RQ_ID) == null;
+        assert !mreg.iterator().hasNext();
 
         mreg.register(METRIC_NAME_RQ_ID, rq::requestId, UUID.class, "Snapshot operation request id.");
         mreg.register(METRIC_NAME_SNP_NAME, rq::snapshotName, String.class, "Snapshot name.");
@@ -550,6 +556,8 @@ public class SnapshotCheckProcess {
         AtomicLongMetric processed = mreg.longMetric(METRIC_NAME_PROCESSED, "Processed data amount in bytes.");
 
         mreg.register(METRIC_NAME_PROGRESS, () -> 100.0 * processed.value() / total.value(), "% of checked data amount.");
+
+        System.err.println("TEST | registerMetrics on " + kctx.cluster().get().localNode().order() + ", " + mreg.name());
     }
 
     /**

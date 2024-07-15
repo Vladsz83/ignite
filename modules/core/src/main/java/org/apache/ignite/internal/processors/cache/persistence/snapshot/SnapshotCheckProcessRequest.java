@@ -53,16 +53,21 @@ public class SnapshotCheckProcessRequest extends AbstractSnapshotOperationReques
     @GridToStringExclude
     private transient volatile GridFutureAdapter<?> fut;
 
+    /** An id of a related process. */
+    @GridToStringInclude
+    @Nullable final UUID relatedProcId;
+
     /**
-     * @param reqId    Request ID.
+     * @param reqId Request ID.
      * @param opNodeId Operational node ID.
-     * @param snpName  Snapshot name.
+     * @param snpName Snapshot name.
      * @param nodes Baseline node IDs that must be alive to complete the operation..
      * @param opCoordId Operation coordinator node id. One of {@code nodes}.
-     * @param snpPath  Snapshot directory path.
-     * @param grps     List of cache group names.
-     * @param incIdx   Incremental snapshot index.
-     * @param includeCustomHandlers   Incremental snapshot index.
+     * @param snpPath Snapshot directory path.
+     * @param grps List of cache group names.
+     * @param incIdx Incremental snapshot index.
+     * @param includeCustomHandlers Incremental snapshot index.
+     * @param relatedProcId An id of a related process.
      */
     protected SnapshotCheckProcessRequest(
         UUID reqId,
@@ -74,7 +79,8 @@ public class SnapshotCheckProcessRequest extends AbstractSnapshotOperationReques
         @Nullable Collection<String> grps,
         int incIdx,
         boolean includeCustomHandlers,
-        boolean validatePartitions
+        boolean validatePartitions,
+        @Nullable UUID relatedProcId
     ) {
         super(reqId, opNodeId, snpName, snpPath, grps, incIdx, nodes);
 
@@ -82,6 +88,7 @@ public class SnapshotCheckProcessRequest extends AbstractSnapshotOperationReques
 
         this.opCoordId = opCoordId;
         this.includeCustomHandlers = includeCustomHandlers;
+        this.relatedProcId = relatedProcId;
     }
 
     /** */

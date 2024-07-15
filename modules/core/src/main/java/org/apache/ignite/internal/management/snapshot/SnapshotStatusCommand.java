@@ -64,15 +64,19 @@ public class SnapshotStatusCommand extends AbstractSnapshotCommand<NoArg, Snapsh
             return;
         }
 
-        boolean isCreating = status.operation() == SnapshotStatusTask.SnapshotOperation.CREATE;
         boolean isIncremental = status.incrementIndex() > 0;
 
         GridStringBuilder s = new GridStringBuilder();
 
-        if (isCreating)
+        if (status.operation() == SnapshotStatusTask.SnapshotOperation.CREATE)
             s.a("Create snapshot operation is in progress.").nl();
-        else
+        else if (status.operation() == SnapshotStatusTask.SnapshotOperation.RESTORE)
             s.a("Restore snapshot operation is in progress.").nl();
+        else {
+            assert status.operation() == SnapshotStatusTask.SnapshotOperation.CHECK;
+
+            s.a("Snapshot check operation is in progress.").nl();
+        }
 
         s.a("Snapshot name: ").a(status.name()).nl();
         s.a("Incremental: ").a(isIncremental).nl();
@@ -90,14 +94,14 @@ public class SnapshotStatusCommand extends AbstractSnapshotCommand<NoArg, Snapsh
 
         SnapshotTaskProgressDesc desc;
 
-        if (isCreating && isIncremental)
+        if (status.operation() == SnapshotStatusTask.SnapshotOperation.CREATE && isIncremental)
             desc = new CreateIncrementalSnapshotTaskProgressDesc();
-        else if (isCreating)
+        else if (status.operation() == SnapshotStatusTask.SnapshotOperation.CREATE)
             desc = new CreateFullSnapshotTaskProgressDesc();
-        else if (isIncremental)
-            desc = new RestoreIncrementalSnapshotTaskProgressDesc();
+        else if (status.operation() == SnapshotStatusTask.SnapshotOperation.RESTORE)
+            desc = isIncremental ? new RestoreIncrementalSnapshotTaskProgressDesc() : new RestoreFullSnapshotTaskProgressDesc();
         else
-            desc = new RestoreFullSnapshotTaskProgressDesc();
+            desc = new CheckSnapshotTaskProgressDesc();
 
         List<List<?>> rows = status.progress().entrySet().stream().sorted(Map.Entry.comparingByKey())
             .map(e -> desc.buildRow(e.getKey(), e.getValue()))
@@ -182,6 +186,11 @@ public class SnapshotStatusCommand extends AbstractSnapshotCommand<NoArg, Snapsh
 
         /** {@inheritDoc} */
         @Override public List<?> buildRow(UUID nodeId, T5<Long, Long, Long, Long, Long> progress) {
+            return buildRow0(nodeId, progress);
+        }
+
+        /**  */
+        private static List<?> buildRow0(UUID nodeId, T5<Long, Long, Long, Long, Long> progress) {
             long processed = progress.get1();
             long total = progress.get2();
 
@@ -191,6 +200,19 @@ public class SnapshotStatusCommand extends AbstractSnapshotCommand<NoArg, Snapsh
             String percent = (int)(processed * 100 / total) + "%";
 
             return F.asList(nodeId, processed, total, percent);
+        }
+    }
+
+    /** */
+    private static class CheckSnapshotTaskProgressDesc extends SnapshotTaskProgressDesc {
+        /** */
+        CheckSnapshotTaskProgressDesc() {
+            super(F.asList("Node ID", "Checked data, bites", "Total data to check, bites", "Percent"));
+        }
+
+        /** {@inheritDoc} */
+        @Override public List<?> buildRow(UUID nodeId, T5<Long, Long, Long, Long, Long> progress) {
+            return RestoreFullSnapshotTaskProgressDesc.buildRow0(nodeId, progress);
         }
     }
 

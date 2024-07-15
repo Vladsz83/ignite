@@ -1894,6 +1894,22 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
         int incIdx,
         boolean check
     ) {
+        return checkSnapshot(name, snpPath, grps, includeCustomHandlers, incIdx, check, null);
+    }
+
+    /**
+     * @param beforeRestore Before restoration flag. If {@code true}, the checking is considered as snapshot restoration part.
+     * @see #checkSnapshot(String, String, Collection, boolean, int, boolean)
+     */
+    IgniteInternalFuture<SnapshotPartitionsVerifyTaskResult> checkSnapshot(
+        String name,
+        @Nullable String snpPath,
+        @Nullable Collection<String> grps,
+        boolean includeCustomHandlers,
+        int incIdx,
+        boolean check,
+        @Nullable UUID restoreProcId
+    ) {
         A.notNullOrEmpty(name, "Snapshot name cannot be null or empty.");
         A.ensure(U.alphanumericUnderscore(name), "Snapshot name must satisfy the following name pattern: a-zA-Z0-9_");
         A.ensure(grps == null || grps.stream().filter(Objects::isNull).collect(Collectors.toSet()).isEmpty(),
@@ -1905,7 +1921,7 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
         }
 
         if (check && incIdx < 1)
-            return checkSnapshotByDistributedProcess(name, snpPath, grps, includeCustomHandlers);
+            return checkSnapshotByDistributedProcess(name, snpPath, grps, includeCustomHandlers, restoreProcId);
 
         GridFutureAdapter<SnapshotPartitionsVerifyTaskResult> res = new GridFutureAdapter<>();
 
@@ -3124,11 +3140,12 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
         String snpName,
         @Nullable String snpPath,
         @Nullable Collection<String> grps,
-        boolean includeCustomHandlers
+        boolean includeCustomHandlers,
+        @Nullable UUID restoreProcId
     ) {
         assert !F.isEmpty(snpName);
 
-        return checkSnpProc.start(snpName, snpPath, grps, includeCustomHandlers);
+        return checkSnpProc.start(snpName, snpPath, grps, includeCustomHandlers, restoreProcId);
     }
 
     /** Snapshot operation handlers. */

@@ -28,7 +28,9 @@ import org.apache.ignite.IgniteException;
 import org.apache.ignite.compute.ComputeJobResult;
 import org.apache.ignite.internal.management.api.NoArg;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.IgniteSnapshotManager;
+import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotCheckProcess;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotOperationRequest;
+import org.apache.ignite.internal.processors.metric.GridMetricManager;
 import org.apache.ignite.internal.processors.task.GridInternal;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.T5;
@@ -37,8 +39,10 @@ import org.apache.ignite.internal.visor.VisorJob;
 import org.apache.ignite.internal.visor.VisorMultiNodeTask;
 import org.apache.ignite.internal.visor.VisorTaskArgument;
 import org.apache.ignite.metric.MetricRegistry;
+import org.apache.ignite.spi.metric.BooleanMetric;
 import org.apache.ignite.spi.metric.IntMetric;
 import org.apache.ignite.spi.metric.LongMetric;
+import org.apache.ignite.spi.metric.ReadOnlyMetricRegistry;
 import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.internal.management.snapshot.SnapshotStatusTask.SnapshotStatus;
@@ -113,6 +117,8 @@ public class SnapshotStatusTask extends VisorMultiNodeTask<NoArg, SnapshotStatus
 
             IgniteSnapshotManager snpMgr = ignite.context().cache().context().snapshotMgr();
 
+            GridMetricManager mMgr = ignite.context().metric();
+
             SnapshotOperationRequest req = snpMgr.currentCreateRequest();
 
             if (req != null) {
@@ -121,7 +127,7 @@ public class SnapshotStatusTask extends VisorMultiNodeTask<NoArg, SnapshotStatus
                 if (req.incremental())
                     metrics = new T5<>(-1L, -1L, -1L, -1L, -1L);
                 else {
-                    MetricRegistry mreg = ignite.context().metric().registry(SNAPSHOT_METRICS);
+                    MetricRegistry mreg = mMgr.registry(SNAPSHOT_METRICS);
 
                     metrics = new T5<>(
                         mreg.<LongMetric>findMetric("CurrentSnapshotProcessedSize").value(),
@@ -139,27 +145,50 @@ public class SnapshotStatusTask extends VisorMultiNodeTask<NoArg, SnapshotStatus
                 );
             }
 
-            MetricRegistry mreg = ignite.context().metric().registry(SNAPSHOT_RESTORE_METRICS);
+            MetricRegistry mreg = mMgr.registry(SNAPSHOT_RESTORE_METRICS);
 
             long startTime = mreg.<LongMetric>findMetric("startTime").value();
 
             if (startTime > mreg.<LongMetric>findMetric("endTime").value()) {
+                String snpName = mreg.findMetric("snapshotName").getAsString();
+
+                ReadOnlyMetricRegistry checkMreg = mreg.<BooleanMetric>findMetric("checking").value()
+                    ? mMgr.findRegistry(SnapshotCheckProcess.metricsRegName(snpName))
+                    : null;
+
+                T5<Long, Long, Long, Long, Long> progress;
+                SnapshotOperation operation;
+
+                if (checkMreg == null) {
+                    operation = SnapshotOperation.RESTORE;
+
+                    progress = new T5<>(
+                        (long)mreg.<IntMetric>findMetric("processedPartitions").value(),
+                        (long)mreg.<IntMetric>findMetric("totalPartitions").value(),
+                        (long)mreg.<IntMetric>findMetric("processedWalSegments").value(),
+                        (long)mreg.<IntMetric>findMetric("totalWalSegments").value(),
+                        mreg.<LongMetric>findMetric("processedWalEntries").value()
+                    );
+                }
+                else {
+                    operation = SnapshotOperation.CHECK;
+
+                    progress = new T5<>(
+                        checkMreg.<LongMetric>findMetric(SnapshotCheckProcess.METRIC_NAME_PROCESSED).value(),
+                        checkMreg.<LongMetric>findMetric(SnapshotCheckProcess.METRIC_NAME_TOTAL).value(),
+                        null,
+                        null,
+                        null
+                    );
+                }
+
                 return new SnapshotStatus(
-                    SnapshotOperation.RESTORE,
-                    mreg.findMetric("snapshotName").getAsString(),
+                    operation,
+                    snpName,
                     mreg.<IntMetric>findMetric("incrementIndex").value(),
                     mreg.findMetric("requestId").getAsString(),
                     mreg.<LongMetric>findMetric("startTime").value(),
-                    F.asMap(
-                        ignite.localNode().id(),
-                        new T5<>(
-                            (long)mreg.<IntMetric>findMetric("processedPartitions").value(),
-                            (long)mreg.<IntMetric>findMetric("totalPartitions").value(),
-                            (long)mreg.<IntMetric>findMetric("processedWalSegments").value(),
-                            (long)mreg.<IntMetric>findMetric("totalWalSegments").value(),
-                            mreg.<LongMetric>findMetric("processedWalEntries").value()
-                        )
-                    )
+                    F.asMap(ignite.localNode().id(), progress)
                 );
             }
 
@@ -244,6 +273,9 @@ public class SnapshotStatusTask extends VisorMultiNodeTask<NoArg, SnapshotStatus
         CREATE,
 
         /** Restore snapshot. */
-        RESTORE
+        RESTORE,
+
+        /** Check snapshot. */
+        CHECK
     }
 }
