@@ -77,13 +77,20 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
 
         ClusterMetricsSnapshot dflt = new ClusterMetricsSnapshot();
 
-        Collection<Object> vals = new HashSet<>();
+        Collection<Double> vals = new HashSet<>();
+
+        int size = 0;
 
         for (Field f : transferredFields()) {
             assertNotEquals("Not set by createMetrics(): " + f.getName(), f.get(dflt), f.get(metrics));
 
-            assertTrue("Duplicate value: " + f.getName(), vals.add(f.get(metrics)));
+            assertTrue("Duplicate value: " + f.getName(), vals.add(((Number)f.get(metrics)).doubleValue()));
+
+            size += f.getType() == int.class || f.getType() == float.class ? 4 : 8;
         }
+
+        // Proves the fields were picked right: a missed or an extra one would not fit the serialized form.
+        assertEquals(ClusterMetricsSnapshot.METRICS_SIZE, size);
     }
 
     /** The copying constructor reads the getters, so it also proves every getter returns its own field. */
