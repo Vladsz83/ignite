@@ -637,7 +637,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
 
     /** {@inheritDoc} */
     @Override public float getAverageActiveJobs() {
-        return curActiveJobs;
+        return avgActiveJobs;
     }
 
     /**

@@ -63,24 +63,34 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
         assert res != null;
     }
 
+    /** Every getter must return the value its own setter assigned. */
+    @Test
+    public void testGetters() {
+        ClusterMetrics metrics = createMetrics();
+
+        assertMetrics(metrics);
+
+        assertEquals(21, metrics.getLastUpdateTime());
+    }
+
+    /** The copying constructor must keep all the values. */
+    @Test
+    public void testCopy() {
+        assertMetrics(new ClusterMetricsSnapshot(createMetrics()));
+    }
+
     /** */
     @Test
     public void testSerialization() {
         byte[] data = new byte[ClusterMetricsSnapshot.METRICS_SIZE];
 
-        ClusterMetrics metrics1 = createMetrics();
-
         // Test serialization.
-        int off = ClusterMetricsSnapshot.serialize(data, 0, metrics1);
+        int off = ClusterMetricsSnapshot.serialize(data, 0, createMetrics());
 
-        assert off == ClusterMetricsSnapshot.METRICS_SIZE;
+        assertEquals(ClusterMetricsSnapshot.METRICS_SIZE, off);
 
-        // Test deserialization.
-        ClusterMetrics metrics2 = ClusterMetricsSnapshot.deserialize(data, 0);
-
-        assert metrics2 != null;
-
-        assert isMetricsEquals(metrics1, metrics2);
+        // Test deserialization. Last update time is intentionally not restored, see #deserialize().
+        assertMetrics(ClusterMetricsSnapshot.deserialize(data, 0));
     }
 
     /**
@@ -93,10 +103,8 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
         assert metrics != null;
     }
 
-    /**
-     * @return Test metrics.
-     */
-    private ClusterMetrics createMetrics() {
+    /** @return Metrics with a distinct value in every property. */
+    private ClusterMetricsSnapshot createMetrics() {
         ClusterMetricsSnapshot metrics = new ClusterMetricsSnapshot();
 
         metrics.totalCpus(1);
@@ -108,7 +116,6 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
         metrics.averageWaitingJobs(7);
         metrics.currentActiveJobs(8);
         metrics.currentCancelledJobs(9);
-        metrics.currentIdleTime(10);
         metrics.currentIdleTime(11);
         metrics.currentJobExecuteTime(12);
         metrics.currentJobWaitTime(13);
@@ -151,63 +158,64 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
         metrics.totalJobsExecutionTime(50);
         metrics.currentPmeDuration(51);
 
-        return new ClusterMetricsSnapshot(metrics);
+        return metrics;
     }
 
     /**
-     * @param obj Object.
-     * @param obj1 Object 1.
+     * Checks the metrics against the values assigned in {@link #createMetrics()}. Last update time is skipped:
+     * {@link ClusterMetricsSnapshot#deserialize(byte[], int)} replaces it with the local receiving time.
+     *
+     * @param m Metrics to check.
      */
-    @SuppressWarnings("FloatingPointEquality")
-    private boolean isMetricsEquals(ClusterMetrics obj, ClusterMetrics obj1) {
-        return
-            obj.getAverageActiveJobs() == obj1.getAverageActiveJobs() &&
-            obj.getAverageCancelledJobs() == obj1.getAverageCancelledJobs() &&
-            obj.getAverageJobExecuteTime() == obj1.getAverageJobExecuteTime() &&
-            obj.getAverageJobWaitTime() == obj1.getAverageJobWaitTime() &&
-            obj.getAverageRejectedJobs() == obj1.getAverageRejectedJobs() &&
-            obj.getAverageWaitingJobs() == obj1.getAverageWaitingJobs() &&
-            obj.getCurrentActiveJobs() == obj1.getCurrentActiveJobs() &&
-            obj.getCurrentCancelledJobs() == obj1.getCurrentCancelledJobs() &&
-            obj.getCurrentIdleTime() == obj1.getCurrentIdleTime() &&
-            obj.getCurrentJobExecuteTime() == obj1.getCurrentJobExecuteTime() &&
-            obj.getCurrentJobWaitTime() == obj1.getCurrentJobWaitTime() &&
-            obj.getCurrentRejectedJobs() == obj1.getCurrentRejectedJobs() &&
-            obj.getCurrentWaitingJobs() == obj1.getCurrentWaitingJobs() &&
-            obj.getCurrentDaemonThreadCount() == obj1.getCurrentDaemonThreadCount() &&
-            obj.getHeapMemoryCommitted() == obj1.getHeapMemoryCommitted() &&
-            obj.getHeapMemoryInitialized() == obj1.getHeapMemoryInitialized() &&
-            obj.getHeapMemoryMaximum() == obj1.getHeapMemoryMaximum() &&
-            obj.getHeapMemoryUsed() == obj1.getHeapMemoryUsed() &&
-            obj.getMaximumActiveJobs() == obj1.getMaximumActiveJobs() &&
-            obj.getMaximumCancelledJobs() == obj1.getMaximumCancelledJobs() &&
-            obj.getMaximumJobExecuteTime() == obj1.getMaximumJobExecuteTime() &&
-            obj.getMaximumJobWaitTime() == obj1.getMaximumJobWaitTime() &&
-            obj.getMaximumRejectedJobs() == obj1.getMaximumRejectedJobs() &&
-            obj.getMaximumWaitingJobs() == obj1.getMaximumWaitingJobs() &&
-            obj.getNonHeapMemoryCommitted() == obj1.getNonHeapMemoryCommitted() &&
-            obj.getNonHeapMemoryInitialized() == obj1.getNonHeapMemoryInitialized() &&
-            obj.getNonHeapMemoryMaximum() == obj1.getNonHeapMemoryMaximum() &&
-            obj.getNonHeapMemoryUsed() == obj1.getNonHeapMemoryUsed() &&
-            obj.getMaximumThreadCount() == obj1.getMaximumThreadCount() &&
-            obj.getStartTime() == obj1.getStartTime() &&
-            obj.getCurrentCpuLoad() == obj1.getCurrentCpuLoad() &&
-            obj.getCurrentThreadCount() == obj1.getCurrentThreadCount() &&
-            obj.getTotalCancelledJobs() == obj1.getTotalCancelledJobs() &&
-            obj.getTotalExecutedJobs() == obj1.getTotalExecutedJobs() &&
-            obj.getTotalIdleTime() == obj1.getTotalIdleTime() &&
-            obj.getTotalRejectedJobs() == obj1.getTotalRejectedJobs() &&
-            obj.getTotalStartedThreadCount() == obj1.getTotalStartedThreadCount() &&
-            obj.getUpTime() == obj1.getUpTime() &&
-            obj.getSentMessagesCount() == obj1.getSentMessagesCount() &&
-            obj.getSentBytesCount() == obj1.getSentBytesCount() &&
-            obj.getReceivedMessagesCount() == obj1.getReceivedMessagesCount() &&
-            obj.getReceivedBytesCount() == obj1.getReceivedBytesCount() &&
-            obj.getOutboundMessagesQueueSize() == obj1.getOutboundMessagesQueueSize() &&
-            obj.getNonHeapMemoryTotal() == obj1.getNonHeapMemoryTotal() &&
-            obj.getHeapMemoryTotal() == obj1.getHeapMemoryTotal() &&
-            obj.getTotalNodes() == obj1.getTotalNodes() &&
-            obj.getTotalJobsExecutionTime() == obj1.getTotalJobsExecutionTime() &&
-            obj.getCurrentPmeDuration() == obj1.getCurrentPmeDuration();
+    private void assertMetrics(ClusterMetrics m) {
+        assertEquals(1, m.getTotalCpus());
+        assertEquals(2, m.getAverageActiveJobs(), 0);
+        assertEquals(3, m.getAverageCancelledJobs(), 0);
+        assertEquals(4, m.getAverageJobExecuteTime(), 0);
+        assertEquals(5, m.getAverageJobWaitTime(), 0);
+        assertEquals(6, m.getAverageRejectedJobs(), 0);
+        assertEquals(7, m.getAverageWaitingJobs(), 0);
+        assertEquals(8, m.getCurrentActiveJobs());
+        assertEquals(9, m.getCurrentCancelledJobs());
+        assertEquals(11, m.getCurrentIdleTime());
+        assertEquals(12, m.getCurrentJobExecuteTime());
+        assertEquals(13, m.getCurrentJobWaitTime());
+        assertEquals(14, m.getCurrentRejectedJobs());
+        assertEquals(15, m.getCurrentWaitingJobs());
+        assertEquals(16, m.getCurrentDaemonThreadCount());
+        assertEquals(17, m.getHeapMemoryCommitted());
+        assertEquals(18, m.getHeapMemoryInitialized());
+        assertEquals(19, m.getHeapMemoryMaximum());
+        assertEquals(20, m.getHeapMemoryUsed());
+        assertEquals(22, m.getMaximumActiveJobs());
+        assertEquals(23, m.getMaximumCancelledJobs());
+        assertEquals(24, m.getMaximumJobExecuteTime());
+        assertEquals(25, m.getMaximumJobWaitTime());
+        assertEquals(26, m.getMaximumRejectedJobs());
+        assertEquals(27, m.getMaximumWaitingJobs());
+        assertEquals(28, m.getNonHeapMemoryCommitted());
+        assertEquals(29, m.getNonHeapMemoryInitialized());
+        assertEquals(30, m.getNonHeapMemoryMaximum());
+        assertEquals(31, m.getNonHeapMemoryUsed());
+        assertEquals(32, m.getMaximumThreadCount());
+        assertEquals(33, m.getStartTime());
+        assertEquals(34, m.getCurrentCpuLoad(), 0);
+        assertEquals(35, m.getCurrentThreadCount());
+        assertEquals(36, m.getTotalCancelledJobs());
+        assertEquals(37, m.getTotalExecutedJobs());
+        assertEquals(38, m.getTotalIdleTime());
+        assertEquals(39, m.getTotalRejectedJobs());
+        assertEquals(40, m.getTotalStartedThreadCount());
+        assertEquals(41, m.getUpTime());
+        assertEquals(42, m.getSentMessagesCount());
+        assertEquals(43, m.getSentBytesCount());
+        assertEquals(44, m.getReceivedMessagesCount());
+        assertEquals(45, m.getReceivedBytesCount());
+        assertEquals(46, m.getOutboundMessagesQueueSize());
+        assertEquals(47, m.getNonHeapMemoryTotal());
+        assertEquals(48, m.getHeapMemoryTotal());
+        assertEquals(49, m.getTotalNodes());
+        assertEquals(50, m.getTotalJobsExecutionTime());
+        assertEquals(51, m.getCurrentPmeDuration());
     }
 }
