@@ -103,8 +103,10 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
         assert metrics != null;
     }
 
-    /** @return Metrics with a distinct value in every property. */
-    private ClusterMetricsSnapshot createMetrics() {
+    /**
+     * @return Test metrics.
+     */
+    private ClusterMetrics createMetrics() {
         ClusterMetricsSnapshot metrics = new ClusterMetricsSnapshot();
 
         metrics.totalCpus(1);
