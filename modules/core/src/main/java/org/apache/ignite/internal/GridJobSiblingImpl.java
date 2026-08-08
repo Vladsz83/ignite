@@ -27,7 +27,6 @@ import org.apache.ignite.internal.cluster.ClusterTopologyCheckedException;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgniteUuid;
-import org.jetbrains.annotations.Nullable;
 
 import static org.apache.ignite.internal.GridTopic.TOPIC_JOB;
 import static org.apache.ignite.internal.GridTopic.TOPIC_JOB_CANCEL;
@@ -35,15 +34,15 @@ import static org.apache.ignite.internal.GridTopic.TOPIC_TASK;
 import static org.apache.ignite.internal.managers.communication.GridIoPolicy.SYSTEM_POOL;
 
 /**
- * This class provides implementation for job sibling.
- * TODO : Revise after https://issues.apache.org/jira/browse/IGNITE-28964
+ * This class provides implementation for job sibling. Never travels over the network: the receiving node builds its
+ * own instances from the job ids the message carries.
  */
 public class GridJobSiblingImpl implements ComputeJobSibling {
     /** */
-    IgniteUuid sesId;
+    private final IgniteUuid sesId;
 
     /** */
-    final IgniteUuid jobId;
+    private final IgniteUuid jobId;
 
     /** */
     private Object taskTopic;
@@ -58,7 +57,7 @@ public class GridJobSiblingImpl implements ComputeJobSibling {
     private boolean isJobDone;
 
     /** */
-    private GridKernalContext ctx;
+    private final GridKernalContext ctx;
 
     /**
      * @param sesId Task session ID.
@@ -66,7 +65,8 @@ public class GridJobSiblingImpl implements ComputeJobSibling {
      * @param nodeId ID of the node where this sibling was sent for execution.
      * @param ctx Managers registry.
      */
-    public GridJobSiblingImpl(@Nullable IgniteUuid sesId, IgniteUuid jobId, UUID nodeId, GridKernalContext ctx) {
+    public GridJobSiblingImpl(IgniteUuid sesId, IgniteUuid jobId, UUID nodeId, GridKernalContext ctx) {
+        assert sesId != null;
         assert jobId != null;
         assert nodeId != null;
         assert ctx != null;

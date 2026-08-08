@@ -625,6 +625,31 @@ public class GridJobProcessor extends GridProcessorAdapter {
     }
 
     /**
+     * Rebuilds the siblings from the job ids sent by the task node. Only the ids travel over the network, the rest of
+     * the sibling state is local to this node.
+     *
+     * @param jobIds Ids of the jobs of the same task, {@code null} if the task node sent none.
+     * @param sesId Task session id, the same for every sibling.
+     * @param taskNodeId Node the task runs on.
+     * @return Siblings, {@code null} if {@code jobIds} is {@code null}.
+     */
+    private @Nullable Collection<ComputeJobSibling> siblings(
+        @Nullable List<IgniteUuid> jobIds,
+        IgniteUuid sesId,
+        UUID taskNodeId
+    ) {
+        if (jobIds == null)
+            return null;
+
+        Collection<ComputeJobSibling> siblings = new ArrayList<>(jobIds.size());
+
+        for (IgniteUuid jobId : jobIds)
+            siblings.add(new GridJobSiblingImpl(sesId, jobId, taskNodeId, ctx));
+
+        return siblings;
+    }
+
+    /**
      * @param ses Session.
      * @return Siblings.
      * @throws IgniteCheckedException If failed.
@@ -740,7 +765,7 @@ public class GridJobProcessor extends GridProcessorAdapter {
                     throw new IgniteCheckedException(t.get1());
                 else
                     // Return result
-                    return t.get2().jobSiblings();
+                    return siblings(t.get2().jobIds(), ses.getId(), taskNodeId);
             }
             catch (InterruptedException e) {
                 throw new IgniteCheckedException("Interrupted while waiting for job siblings response: " + ses, e);
@@ -1259,22 +1284,8 @@ public class GridJobProcessor extends GridProcessorAdapter {
                                 U.resolveClassLoader(dep.classLoader(), ctx.config()));
                         }
 
-                        // TODO : Revise after https://issues.apache.org/jira/browse/IGNITE-28964
-                        List<IgniteUuid> siblJobsIds = req.siblingJobsIds();
-                        List<IgniteUuid> siblJobsSesIds = req.siblingJobsSessionIds();
-
-                        assert F.isEmpty(siblJobsIds) == F.isEmpty(siblJobsSesIds);
-
-                        Collection<ComputeJobSibling> siblings = null;
-
-                        if (!F.isEmpty(siblJobsIds)) {
-                            assert siblJobsSesIds.size() == siblJobsIds.size();
-
-                            siblings = new ArrayList<>(siblJobsIds.size());
-
-                            for (int i = 0; i < siblJobsIds.size(); ++i)
-                                siblings.add(new GridJobSiblingImpl(siblJobsSesIds.get(i), siblJobsIds.get(i), node.id(), ctx));
-                        }
+                        // Keeps null: a continuous task sends no siblings, the job requests them when it needs them.
+                        Collection<ComputeJobSibling> siblings = siblings(req.siblingJobIds(), req.sessionId(), node.id());
 
                         GridTaskSessionImpl taskSes = ctx.session().createTaskSession(
                             req.sessionId(),

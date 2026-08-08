@@ -25,11 +25,11 @@ import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.compute.ComputeJob;
+import org.apache.ignite.compute.ComputeJobSibling;
 import org.apache.ignite.configuration.DeploymentMode;
 import org.apache.ignite.internal.processors.affinity.AffinityTopologyVersion;
 import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
-import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.lang.IgnitePredicate;
@@ -109,43 +109,42 @@ public class GridJobExecuteRequest implements ExecutorAwareMessage, DeferredUnma
     @Order(11)
     String cpSpi;
 
-    /** Sibling jobs ids. Plain representation of {@link GridJobSiblingImpl#jobId} to reduce the messages number. */
+    /**
+     * Ids of the jobs of the same task. Empty if the task keeps no siblings; {@code null} for a continuous task,
+     * whose job requests the siblings from the task node instead.
+     */
     @Order(12)
-    @Nullable List<IgniteUuid> sibJobsIds;
-
-    /** Sibling jobs ids. Plain representation of {@link GridJobSiblingImpl#sesId} to reduce the messages number. */
-    @Order(13)
-    @Nullable List<IgniteUuid> sibJobsSesId;
+    @Nullable List<IgniteUuid> sibJobIds;
 
     /** Transient since needs to hold local creation time. */
     private final long createTime = U.currentTimeMillis();
 
     /** */
-    @Order(14)
+    @Order(13)
     IgniteUuid clsLdrId;
 
     /** */
-    @Order(15)
+    @Order(14)
     DeploymentMode depMode;
 
     /** */
-    @Order(16)
+    @Order(15)
     boolean dynamicSiblings;
 
     /** */
-    @Order(17)
+    @Order(16)
     boolean forceLocDep;
 
     /** */
-    @Order(18)
+    @Order(17)
     boolean sesFullSup;
 
     /** */
-    @Order(19)
+    @Order(18)
     boolean internal;
 
     /** */
-    @Order(20)
+    @Order(19)
     Collection<UUID> top;
 
     /** */
@@ -153,23 +152,23 @@ public class GridJobExecuteRequest implements ExecutorAwareMessage, DeferredUnma
     IgnitePredicate<ClusterNode> topPred;
 
     /** */
-    @Order(21)
+    @Order(20)
     byte[] topPredBytes;
 
     /** */
-    @Order(22)
+    @Order(21)
     int[] cacheIds;
 
     /** */
-    @Order(23)
+    @Order(22)
     int part;
 
     /** */
-    @Order(24)
+    @Order(23)
     AffinityTopologyVersion topVer;
 
     /** */
-    @Order(25)
+    @Order(24)
     String execName;
 
     /**
@@ -217,7 +216,7 @@ public class GridJobExecuteRequest implements ExecutorAwareMessage, DeferredUnma
             long timeout,
             @Nullable Collection<UUID> top,
             @Nullable IgnitePredicate<ClusterNode> topPred,
-            Collection<GridJobSiblingImpl> siblings,
+            Collection<ComputeJobSibling> siblings,
             Map<Object, Object> sesAttrs,
             Map<? extends Serializable, ? extends Serializable> jobAttrs,
             String cpSpi,
@@ -243,6 +242,7 @@ public class GridJobExecuteRequest implements ExecutorAwareMessage, DeferredUnma
         assert clsLdrId != null;
         assert userVer != null;
         assert depMode != null;
+        assert siblings != null;
 
         this.sesId = sesId;
         this.jobId = jobId;
@@ -271,15 +271,11 @@ public class GridJobExecuteRequest implements ExecutorAwareMessage, DeferredUnma
 
         this.cpSpi = cpSpi == null || cpSpi.isEmpty() ? null : cpSpi;
 
-        // TODO : Revise after https://issues.apache.org/jira/browse/IGNITE-28964
-        if (!dynamicSiblings && !F.isEmpty(siblings)) {
-            sibJobsIds = new ArrayList<>(siblings.size());
-            sibJobsSesId = new ArrayList<>(sibJobsIds.size());
+        if (!dynamicSiblings) {
+            sibJobIds = new ArrayList<>(siblings.size());
 
-            siblings.forEach(sibJobImpl -> {
-                sibJobsIds.add(sibJobImpl.jobId);
-                sibJobsSesId.add(sibJobImpl.sesId);
-            });
+            for (ComputeJobSibling sibling : siblings)
+                sibJobIds.add(sibling.getJobId());
         }
     }
 
@@ -349,17 +345,10 @@ public class GridJobExecuteRequest implements ExecutorAwareMessage, DeferredUnma
     }
 
     /**
-     * @return Sibling job ids.
+     * @return Ids of the jobs of the same task, {@code null} if the task builds its jobs dynamically.
      */
-    public @Nullable List<IgniteUuid> siblingJobsIds() {
-        return sibJobsIds;
-    }
-
-    /**
-     * @return Sibling job session ids.
-     */
-    public @Nullable List<IgniteUuid> siblingJobsSessionIds() {
-        return sibJobsSesId;
+    public @Nullable List<IgniteUuid> siblingJobIds() {
+        return sibJobIds;
     }
 
     /**

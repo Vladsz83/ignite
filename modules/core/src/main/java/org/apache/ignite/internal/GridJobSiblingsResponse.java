@@ -17,24 +17,23 @@
 
 package org.apache.ignite.internal;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import org.apache.ignite.compute.ComputeJobSibling;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.lang.IgniteUuid;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Job siblings response.
+ * Job siblings response. Carries only the job ids: the requesting node builds its own {@link GridJobSiblingImpl}
+ * instances out of them.
  */
-@UseBinaryMarshaller
 public class GridJobSiblingsResponse implements Message {
-    /** */
-    @Marshalled("siblingsBytes")
-    @Nullable Collection<ComputeJobSibling> siblings;
-
-    /** */
+    /** Ids of the jobs of the task. {@code null} if the task is unknown to the task node or has already finished. */
     @Order(0)
-    byte[] siblingsBytes;
+    @Nullable List<IgniteUuid> jobIds;
 
     /**
      * Empty constructor.
@@ -47,14 +46,20 @@ public class GridJobSiblingsResponse implements Message {
      * @param siblings Siblings.
      */
     public GridJobSiblingsResponse(@Nullable Collection<ComputeJobSibling> siblings) {
-        this.siblings = siblings;
+        if (siblings == null)
+            return;
+
+        jobIds = new ArrayList<>(siblings.size());
+
+        for (ComputeJobSibling sibling : siblings)
+            jobIds.add(sibling.getJobId());
     }
 
     /**
-     * @return Job siblings.
+     * @return Ids of the jobs of the task.
      */
-    public @Nullable Collection<ComputeJobSibling> jobSiblings() {
-        return siblings;
+    public @Nullable List<IgniteUuid> jobIds() {
+        return jobIds;
     }
 
     /** {@inheritDoc} */
