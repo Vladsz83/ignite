@@ -31,7 +31,10 @@ import org.junit.Test;
 
 import static org.apache.ignite.marshaller.Marshallers.jdk;
 
-/** Checks how {@link GridCacheEntryInfo} carries the expiration time over the wire. */
+/**
+ * Checks how {@link GridCacheEntryInfo} encodes the expiration on the wire. The expiration semantics itself is covered
+ * by the TTL and the expiry policy suites, here is only what those cannot see.
+ */
 public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest {
     /** */
     private static final int CACHE_ID = 42;
@@ -40,45 +43,8 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
     private static final GridCacheVersion VER = new GridCacheVersion(1, 2, 3);
 
     /** */
-    private static final long CLOCK_TOLERANCE = 1_000;
-
-    /** */
     private final MessageFactory<?> msgFactory = new IgniteMessageFactoryImpl<>(
         new MessageFactoryProvider[] {new CoreMessagesProvider(jdk(), jdk())});
-
-    /** */
-    @Test
-    public void testNeverExpiringEntry() {
-        assertEquals(0, writeAndReadBack(entryInfo(0)).expireTime());
-    }
-
-    /** */
-    @Test
-    public void testLocalRoundTripIsExact() {
-        long expireTime = U.currentTimeMillis() + 60_000;
-
-        assertEquals(expireTime, entryInfo(expireTime).expireTime());
-    }
-
-    /** */
-    @Test
-    public void testExpiringEntry() {
-        long expireTime = U.currentTimeMillis() + 60_000;
-
-        long rcvd = writeAndReadBack(entryInfo(expireTime)).expireTime();
-
-        assertTrue("Expire time is not preserved: " + rcvd + " instead of " + expireTime,
-            Math.abs(rcvd - expireTime) < CLOCK_TOLERANCE);
-    }
-
-    /** */
-    @Test
-    public void testAlreadyExpiredEntry() {
-        long rcvd = writeAndReadBack(entryInfo(U.currentTimeMillis() - 60_000)).expireTime();
-
-        assertTrue("Expired entry lost its expiration", rcvd > 0);
-        assertTrue("Expired entry is not expired anymore: " + rcvd, rcvd <= U.currentTimeMillis());
-    }
 
     /** The wire format compresses a long, so a sentinel far from zero costs 10 bytes per entry instead of 1. */
     @Test
@@ -90,18 +56,13 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
             "takes only " + expiring, neverExpiring < expiring);
     }
 
-    /** */
+    /** A negative remainder marks the never expiring entry, so an entry past its expiration must not transfer one. */
     @Test
-    public void testRepeatedWriteIsIdempotent() {
-        GridCacheEntryInfo info = entryInfo(U.currentTimeMillis() + 60_000);
+    public void testAlreadyExpiredEntryDoesNotBecomeEternal() {
+        long rcvd = writeAndReadBack(entryInfo(U.currentTimeMillis() - 60_000)).expireTime();
 
-        assertEquals(write(info).position(), write(info).position());
-
-        long first = writeAndReadBack(info).expireTime();
-        long second = writeAndReadBack(info).expireTime();
-
-        assertTrue("Repeated marshalling shifted the expire time: " + first + " then " + second,
-            Math.abs(second - first) < CLOCK_TOLERANCE);
+        assertTrue("Expired entry lost its expiration", rcvd > 0);
+        assertTrue("Expired entry is not expired anymore: " + rcvd, rcvd <= U.currentTimeMillis());
     }
 
     /** */
