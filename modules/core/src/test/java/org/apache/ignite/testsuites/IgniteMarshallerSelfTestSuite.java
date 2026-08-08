@@ -25,6 +25,7 @@ import org.apache.ignite.internal.marshaller.optimized.OptimizedMarshallerSelfTe
 import org.apache.ignite.internal.marshaller.optimized.OptimizedMarshallerSerialPersistentFieldsSelfTest;
 import org.apache.ignite.internal.marshaller.optimized.OptimizedMarshallerTest;
 import org.apache.ignite.internal.marshaller.optimized.OptimizedObjectStreamSelfTest;
+import org.apache.ignite.internal.processors.cache.GridCacheEntryInfoSerializationTest;
 import org.apache.ignite.internal.util.GridHandleTableSelfTest;
 import org.apache.ignite.internal.util.io.GridUnsafeDataInputOutputByteOrderSelfTest;
 import org.apache.ignite.internal.util.io.GridUnsafeDataOutputArraySizingSelfTest;
@@ -52,6 +53,7 @@ import org.junit.runners.Suite;
     OptimizedMarshallerPooledSelfTest.class,
     MarshallerEnumDeadlockMultiJvmTest.class,
     DirectMarshallingMessagesTest.class,
+    GridCacheEntryInfoSerializationTest.class,
     ObjectInputStreamFilteringTest.class,
 })
 public class IgniteMarshallerSelfTestSuite {

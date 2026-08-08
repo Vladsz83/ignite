@@ -20,8 +20,10 @@ package org.apache.ignite.internal.processors.cache;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.Order;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
+import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.internal.util.typedef.internal.U;
 import org.apache.ignite.plugin.extensions.communication.CacheIdAware;
 import org.apache.ignite.plugin.extensions.communication.Message;
 import org.jetbrains.annotations.Nullable;
@@ -50,16 +52,22 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     @Order(3)
     long ttl;
 
-    /** Base time to calculate {@link #expireTime()}. */
-    long initTime;
-
-    /** Expiration time delta to transfer. {@link Long#MIN_VALUE} means no expiration is set. */
+    /**
+     * Time left to live, counted from {@link #initTime}. {@code -1} means the entry never expires, any other value is
+     * non-negative. The remainder goes on the wire instead of the absolute expiration time, so that the receiver
+     * counts it from its own clock and the clock difference between the nodes does not shift the expiration.
+     */
     @Order(4)
-    long expireTimeTransferDelta = Long.MIN_VALUE;
+    @GridToStringExclude
+    long expireTimeDelta = -1;
 
     /** Entry version. */
     @Order(5)
     GridCacheVersion ver;
+
+    /** The moment {@link #expireTimeDelta} is counted from: entry creation on the sender, message read on the receiver. */
+    @GridToStringExclude
+    private long initTime;
 
     /** New flag. */
     private boolean isNew;
@@ -67,25 +75,26 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     /** Deleted flag. */
     private boolean deleted;
 
-    /**
-     * Empty constructor for serialization purposes.
-     * see {@link #expireTimeTransferDelta}.
-     */
+    /** Empty constructor for the message factory: reading the message starts the countdown of {@link #expireTimeDelta}. */
     public GridCacheEntryInfo() {
-        initTime = System.currentTimeMillis();
+        initTime = U.currentTimeMillis();
     }
 
-    /** */
-    public GridCacheEntryInfo(int cacheId, KeyCacheObject key, @Nullable CacheObject val, GridCacheVersion ver, long expireTime, long ttl) {
-        if (expireTime == 0) {
-            /** {@link Long#MIN_VALUE} means no expiration is set. */
-            expireTimeTransferDelta = Long.MIN_VALUE;
-        }
-        else {
-            initTime = System.currentTimeMillis();
+    /**
+     * @param cacheId Cache ID.
+     * @param key Entry key.
+     * @param val Entry value.
+     * @param ver Entry version.
+     * @param expireTime Absolute expiration time, {@code 0} if the entry never expires.
+     * @param ttl Time to live.
+     */
+    public GridCacheEntryInfo(int cacheId, KeyCacheObject key, @Nullable CacheObject val, GridCacheVersion ver,
+        long expireTime, long ttl) {
+        initTime = U.currentTimeMillis();
 
-            expireTimeTransferDelta = expireTime == 0 ? Long.MIN_VALUE : expireTime - initTime;
-        }
+        // An entry past its expiration time transfers as expiring right now, keeping -1 free for the never case.
+        if (expireTime != 0)
+            expireTimeDelta = Math.max(0, expireTime - initTime);
 
         this.cacheId = cacheId;
         this.key = key;
@@ -124,7 +133,13 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
      * @return Expire time.
      */
     public long expireTime() {
-        return expireTimeTransferDelta == Long.MIN_VALUE ? 0 : initTime + expireTimeTransferDelta;
+        if (expireTimeDelta < 0)
+            return 0;
+
+        long expireTime = initTime + expireTimeDelta;
+
+        // Account for overflow.
+        return expireTime < 0 ? 0 : expireTime;
     }
 
     /**
@@ -180,13 +195,14 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
         if (val != null)
             size += val.valueBytes(ctx).length;
 
-        size += key.valueBytes(ctx).length;
+        if (key != null)
+            size += key.valueBytes(ctx).length;
 
         return SIZE_OVERHEAD + size;
     }
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(GridCacheEntryInfo.class, this);
+        return S.toString(GridCacheEntryInfo.class, this, "expireTime", expireTime());
     }
 }
