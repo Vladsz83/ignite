@@ -28,6 +28,8 @@ import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
 import org.apache.ignite.testframework.junits.common.GridCommonTest;
 import org.junit.Test;
 
+import static org.junit.Assert.assertNotEquals;
+
 /**
  * Grid discovery metrics test.
  */
@@ -68,15 +70,20 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
         assert res != null;
     }
 
-    /** The test values must stay unique, otherwise a getter reading a neighbour field goes unnoticed. */
+    /** Every transferred field must get a distinct value, otherwise the checks below prove nothing. */
     @Test
-    public void testDistinctValues() throws Exception {
+    public void testEveryFieldCovered() throws Exception {
         ClusterMetrics metrics = createMetrics();
 
-        Collection<Double> vals = new HashSet<>();
+        ClusterMetricsSnapshot dflt = new ClusterMetricsSnapshot();
 
-        for (Field f : transferredFields())
-            assertTrue("Duplicate test value: " + f.getName(), vals.add(((Number)f.get(metrics)).doubleValue()));
+        Collection<Object> vals = new HashSet<>();
+
+        for (Field f : transferredFields()) {
+            assertNotEquals("Not set by createMetrics(): " + f.getName(), f.get(dflt), f.get(metrics));
+
+            assertTrue("Duplicate value: " + f.getName(), vals.add(f.get(metrics)));
+        }
     }
 
     /** The copying constructor reads the getters, so it also proves every getter returns its own field. */
@@ -119,61 +126,63 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
     private ClusterMetrics createMetrics() {
         ClusterMetricsSnapshot metrics = new ClusterMetricsSnapshot();
 
-        metrics.totalCpus(1);
-        metrics.averageActiveJobs(2);
-        metrics.averageCancelledJobs(3);
-        metrics.averageJobExecuteTime(4);
-        metrics.averageJobWaitTime(5);
-        metrics.averageRejectedJobs(6);
-        metrics.averageWaitingJobs(7);
-        metrics.currentActiveJobs(8);
-        metrics.currentCancelledJobs(9);
-        metrics.currentIdleTime(11);
-        metrics.currentJobExecuteTime(12);
-        metrics.currentJobWaitTime(13);
-        metrics.currentRejectedJobs(14);
-        metrics.currentWaitingJobs(15);
-        metrics.currentDaemonThreadCount(16);
-        metrics.heapMemoryCommitted(17);
-        metrics.heapMemoryInitialized(18);
-        metrics.heapMemoryMaximum(19);
-        metrics.heapMemoryUsed(20);
-        metrics.lastUpdateTime(21);
-        metrics.maximumActiveJobs(22);
-        metrics.maximumCancelledJobs(23);
-        metrics.maximumJobExecuteTime(24);
-        metrics.maximumJobWaitTime(25);
-        metrics.maximumRejectedJobs(26);
-        metrics.maximumWaitingJobs(27);
-        metrics.nonHeapMemoryCommitted(28);
-        metrics.nonHeapMemoryInitialized(29);
-        metrics.nonHeapMemoryMaximum(30);
-        metrics.nonHeapMemoryUsed(31);
-        metrics.maximumThreadCount(32);
-        metrics.startTime(33);
-        metrics.currentCpuLoad(34);
-        metrics.currentThreadCount(35);
-        metrics.totalCancelledJobs(36);
-        metrics.totalExecutedJobs(37);
-        metrics.totalIdleTime(38);
-        metrics.totalRejectedJobs(39);
-        metrics.totalStartedThreadCount(40);
-        metrics.upTime(41);
-        metrics.sentMessagesCount(42);
-        metrics.sentBytesCount(43);
-        metrics.receivedMessagesCount(44);
-        metrics.receivedBytesCount(45);
-        metrics.outboundMessagesQueueSize(46);
-        metrics.nonHeapMemoryTotal(47);
-        metrics.heapMemoryTotal(48);
-        metrics.totalNodes(49);
-        metrics.totalJobsExecutionTime(50);
-        metrics.currentPmeDuration(51);
-        metrics.averageCpuLoad(52);
-        metrics.currentGcCpuLoad(53);
-        metrics.lastDataVersion(54);
-        metrics.nodeStartTime(55);
-        metrics.totalExecutedTasks(56);
+        int v = 0;
+
+        metrics.totalCpus(++v);
+        metrics.averageActiveJobs(++v);
+        metrics.averageCancelledJobs(++v);
+        metrics.averageJobExecuteTime(++v);
+        metrics.averageJobWaitTime(++v);
+        metrics.averageRejectedJobs(++v);
+        metrics.averageWaitingJobs(++v);
+        metrics.currentActiveJobs(++v);
+        metrics.currentCancelledJobs(++v);
+        metrics.currentIdleTime(++v);
+        metrics.currentJobExecuteTime(++v);
+        metrics.currentJobWaitTime(++v);
+        metrics.currentRejectedJobs(++v);
+        metrics.currentWaitingJobs(++v);
+        metrics.currentDaemonThreadCount(++v);
+        metrics.heapMemoryCommitted(++v);
+        metrics.heapMemoryInitialized(++v);
+        metrics.heapMemoryMaximum(++v);
+        metrics.heapMemoryUsed(++v);
+        metrics.lastUpdateTime(++v);
+        metrics.maximumActiveJobs(++v);
+        metrics.maximumCancelledJobs(++v);
+        metrics.maximumJobExecuteTime(++v);
+        metrics.maximumJobWaitTime(++v);
+        metrics.maximumRejectedJobs(++v);
+        metrics.maximumWaitingJobs(++v);
+        metrics.nonHeapMemoryCommitted(++v);
+        metrics.nonHeapMemoryInitialized(++v);
+        metrics.nonHeapMemoryMaximum(++v);
+        metrics.nonHeapMemoryUsed(++v);
+        metrics.maximumThreadCount(++v);
+        metrics.startTime(++v);
+        metrics.currentCpuLoad(++v);
+        metrics.currentThreadCount(++v);
+        metrics.totalCancelledJobs(++v);
+        metrics.totalExecutedJobs(++v);
+        metrics.totalIdleTime(++v);
+        metrics.totalRejectedJobs(++v);
+        metrics.totalStartedThreadCount(++v);
+        metrics.upTime(++v);
+        metrics.sentMessagesCount(++v);
+        metrics.sentBytesCount(++v);
+        metrics.receivedMessagesCount(++v);
+        metrics.receivedBytesCount(++v);
+        metrics.outboundMessagesQueueSize(++v);
+        metrics.nonHeapMemoryTotal(++v);
+        metrics.heapMemoryTotal(++v);
+        metrics.totalNodes(++v);
+        metrics.totalJobsExecutionTime(++v);
+        metrics.currentPmeDuration(++v);
+        metrics.averageCpuLoad(++v);
+        metrics.currentGcCpuLoad(++v);
+        metrics.lastDataVersion(++v);
+        metrics.nodeStartTime(++v);
+        metrics.totalExecutedTasks(++v);
 
         return metrics;
     }
