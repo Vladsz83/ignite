@@ -51,6 +51,9 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     @Order(3)
     long ttl;
 
+    /** Not transferred. Base of {@link #expireTimeDelta}: entry creation on the sender, message creation on the receiver. */
+    private long initTime;
+
     /** Time left to live, {@code -1} if the entry never expires. Absolute time would shift with the clock difference. */
     @Order(4)
     long expireTimeDelta = -1;
@@ -58,9 +61,6 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     /** Entry version. */
     @Order(5)
     GridCacheVersion ver;
-
-    /** Base of {@link #expireTimeDelta}: entry creation on the sender, message creation on the receiver. */
-    private long initTime;
 
     /** New flag. */
     private boolean isNew;
