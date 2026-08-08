@@ -157,6 +157,11 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
         metrics.totalNodes(49);
         metrics.totalJobsExecutionTime(50);
         metrics.currentPmeDuration(51);
+        metrics.averageCpuLoad(52);
+        metrics.currentGcCpuLoad(53);
+        metrics.lastDataVersion(54);
+        metrics.nodeStartTime(55);
+        metrics.totalExecutedTasks(56);
 
         return metrics;
     }
@@ -217,5 +222,10 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
         assertEquals(49, m.getTotalNodes());
         assertEquals(50, m.getTotalJobsExecutionTime());
         assertEquals(51, m.getCurrentPmeDuration());
+        assertEquals(52, m.getAverageCpuLoad(), 0);
+        assertEquals(53, m.getCurrentGcCpuLoad(), 0);
+        assertEquals(54, m.getLastDataVersion());
+        assertEquals(55, m.getNodeStartTime());
+        assertEquals(56, m.getTotalExecutedTasks());
     }
 }

@@ -579,7 +579,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         this.heapTotal = heapTotal;
     }
 
-    /** @param nonHeapTotal Total heap. */
+    /** @param nonHeapTotal Total non-heap size. */
     public void nonHeapMemoryTotal(long nonHeapTotal) {
         this.nonHeapTotal = nonHeapTotal;
     }
@@ -1017,7 +1017,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         this.curCpuLoad = curCpuLoad;
     }
 
-    /** @param avgCpuLoad CPU load average. */
+    /** @param avgCpuLoad CPU load average over the metrics history. */
     public void averageCpuLoad(double avgCpuLoad) {
         this.avgCpuLoad = avgCpuLoad;
     }
