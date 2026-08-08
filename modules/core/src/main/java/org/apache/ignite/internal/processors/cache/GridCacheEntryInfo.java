@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.cache;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.internal.Order;
 import org.apache.ignite.internal.processors.cache.version.GridCacheVersion;
+import org.apache.ignite.internal.util.tostring.GridToStringExclude;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.internal.util.typedef.internal.U;
@@ -60,6 +61,7 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     GridCacheVersion ver;
 
     /** Base of {@link #expireTimeDelta}: entry creation on the sender, message creation on the receiver. */
+    @GridToStringExclude
     private long initTime;
 
     /** New flag. */
@@ -188,6 +190,6 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
 
     /** {@inheritDoc} */
     @Override public String toString() {
-        return S.toString(GridCacheEntryInfo.class, this);
+        return S.toString(GridCacheEntryInfo.class, this, "expireTime", expireTime());
     }
 }
