@@ -22,6 +22,7 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Set;
 import org.apache.ignite.cluster.ClusterMetrics;
 import org.apache.ignite.internal.ClusterMetricsSnapshot;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
@@ -77,7 +78,7 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
 
         ClusterMetricsSnapshot dflt = new ClusterMetricsSnapshot();
 
-        Collection<Double> vals = new HashSet<>();
+        Set<Double> vals = new HashSet<>();
 
         int size = 0;
 
@@ -86,7 +87,7 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
 
             assertTrue("Duplicate value: " + f.getName(), vals.add(((Number)f.get(metrics)).doubleValue()));
 
-            size += f.getType() == int.class || f.getType() == float.class ? 4 : 8;
+            size += (f.getType() == int.class || f.getType() == float.class) ? 4 : 8;
         }
 
         // Proves the fields were picked right: a missed or an extra one would not fit the serialized form.
@@ -98,7 +99,12 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
     public void testCopy() throws Exception {
         ClusterMetrics metrics = createMetrics();
 
-        assertTransferredFieldsEqual(metrics, new ClusterMetricsSnapshot(metrics));
+        ClusterMetrics cp = new ClusterMetricsSnapshot(metrics);
+
+        assertTransferredFieldsEqual(metrics, cp);
+
+        // Unlike deserialize(), the copying constructor keeps the update time.
+        assertEquals(metrics.getLastUpdateTime(), cp.getLastUpdateTime());
     }
 
     /** */
