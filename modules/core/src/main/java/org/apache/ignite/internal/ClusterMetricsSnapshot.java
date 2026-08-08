@@ -314,10 +314,9 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
     /** */
     public long lastUpdateTime = -1;
 
-    /** Empty constructor for serialization purposes. */
+    /** Creates empty metrics. Update time is the creation time, same as in {@link #deserialize(byte[], int)}. */
     public ClusterMetricsSnapshot() {
-        // Like in deserealize()
-        lastUpdateTime = System.currentTimeMillis();
+        lastUpdateTime = U.currentTimeMillis();
     }
 
     /**
@@ -565,7 +564,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         lastUpdateTime = metrics.getLastUpdateTime();
     }
 
-    /** */
+    /** @return The metrics themselves if they are already a snapshot, their copy otherwise. */
     public static ClusterMetricsSnapshot of(ClusterMetrics metrics) {
         return metrics instanceof ClusterMetricsSnapshot ? (ClusterMetricsSnapshot)metrics : new ClusterMetricsSnapshot(metrics);
     }
@@ -575,20 +574,12 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return heapTotal;
     }
 
-    /**
-     * Sets total heap size.
-     *
-     * @param heapTotal Total heap.
-     */
+    /** @param heapTotal Total heap. */
     public void heapMemoryTotal(long heapTotal) {
         this.heapTotal = heapTotal;
     }
 
-    /**
-     * Sets non-heap total heap size.
-     *
-     * @param nonHeapTotal Total heap.
-     */
+    /** @param nonHeapTotal Total heap. */
     public void nonHeapMemoryTotal(long nonHeapTotal) {
         this.nonHeapTotal = nonHeapTotal;
     }
@@ -598,11 +589,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return lastUpdateTime;
     }
 
-    /**
-     * Sets last update time.
-     *
-     * @param lastUpdateTime Last update time.
-     */
+    /** @param lastUpdateTime Last update time. */
     public void lastUpdateTime(long lastUpdateTime) {
         this.lastUpdateTime = lastUpdateTime;
     }
@@ -612,11 +599,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return maxActiveJobs;
     }
 
-    /**
-     * Sets max active jobs.
-     *
-     * @param maxActiveJobs Max active jobs.
-     */
+    /** @param maxActiveJobs Max active jobs. */
     public void maximumActiveJobs(int maxActiveJobs) {
         this.maxActiveJobs = maxActiveJobs;
     }
@@ -626,11 +609,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return curActiveJobs;
     }
 
-    /**
-     * Sets current active jobs.
-     *
-     * @param curActiveJobs Current active jobs.
-     */
+    /** @param curActiveJobs Current active jobs. */
     public void currentActiveJobs(int curActiveJobs) {
         this.curActiveJobs = curActiveJobs;
     }
@@ -640,11 +619,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return avgActiveJobs;
     }
 
-    /**
-     * Sets average active jobs.
-     *
-     * @param avgActiveJobs Average active jobs.
-     */
+    /** @param avgActiveJobs Average active jobs. */
     public void averageActiveJobs(float avgActiveJobs) {
         this.avgActiveJobs = avgActiveJobs;
     }
@@ -654,11 +629,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return maxWaitingJobs;
     }
 
-    /**
-     * Sets maximum waiting jobs.
-     *
-     * @param maxWaitingJobs Maximum waiting jobs.
-     */
+    /** @param maxWaitingJobs Maximum waiting jobs. */
     public void maximumWaitingJobs(int maxWaitingJobs) {
         this.maxWaitingJobs = maxWaitingJobs;
     }
@@ -668,11 +639,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return curWaitingJobs;
     }
 
-    /**
-     * Sets current waiting jobs.
-     *
-     * @param curWaitingJobs Current waiting jobs.
-     */
+    /** @param curWaitingJobs Current waiting jobs. */
     public void currentWaitingJobs(int curWaitingJobs) {
         this.curWaitingJobs = curWaitingJobs;
     }
@@ -682,11 +649,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return avgWaitingJobs;
     }
 
-    /**
-     * Sets average waiting jobs.
-     *
-     * @param avgWaitingJobs Average waiting jobs.
-     */
+    /** @param avgWaitingJobs Average waiting jobs. */
     public void averageWaitingJobs(float avgWaitingJobs) {
         this.avgWaitingJobs = avgWaitingJobs;
     }
@@ -744,11 +707,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return maxCancelledJobs;
     }
 
-    /**
-     * Sets maximum cancelled jobs.
-     *
-     * @param maxCancelledJobs Maximum cancelled jobs.
-     */
+    /** @param maxCancelledJobs Maximum cancelled jobs. */
     public void maximumCancelledJobs(int maxCancelledJobs) {
         this.maxCancelledJobs = maxCancelledJobs;
     }
@@ -758,11 +717,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return curCancelledJobs;
     }
 
-    /**
-     * Sets current cancelled jobs.
-     *
-     * @param curCancelledJobs Current cancelled jobs.
-     */
+    /** @param curCancelledJobs Current cancelled jobs. */
     public void currentCancelledJobs(int curCancelledJobs) {
         this.curCancelledJobs = curCancelledJobs;
     }
@@ -772,11 +727,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return avgCancelledJobs;
     }
 
-    /**
-     * Sets average cancelled jobs.
-     *
-     * @param avgCancelledJobs Average cancelled jobs.
-     */
+    /** @param avgCancelledJobs Average cancelled jobs. */
     public void averageCancelledJobs(float avgCancelledJobs) {
         this.avgCancelledJobs = avgCancelledJobs;
     }
@@ -786,11 +737,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return totalExecutedJobs;
     }
 
-    /**
-     * Sets total active jobs.
-     *
-     * @param totalExecutedJobs Total active jobs.
-     */
+    /** @param totalExecutedJobs Total active jobs. */
     public void totalExecutedJobs(int totalExecutedJobs) {
         this.totalExecutedJobs = totalExecutedJobs;
     }
@@ -800,11 +747,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return totalJobsExecTime;
     }
 
-    /**
-     * Sets total jobs execution time.
-     *
-     * @param totalJobsExecTime Total jobs execution time.
-     */
+    /** @param totalJobsExecTime Total jobs execution time. */
     public void totalJobsExecutionTime(long totalJobsExecTime) {
         this.totalJobsExecTime = totalJobsExecTime;
     }
@@ -814,11 +757,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return totalCancelledJobs;
     }
 
-    /**
-     * Sets total cancelled jobs.
-     *
-     * @param totalCancelledJobs Total cancelled jobs.
-     */
+    /** @param totalCancelledJobs Total cancelled jobs. */
     public void totalCancelledJobs(int totalCancelledJobs) {
         this.totalCancelledJobs = totalCancelledJobs;
     }
@@ -828,11 +767,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return maxJobWaitTime;
     }
 
-    /**
-     * Sets max job wait time.
-     *
-     * @param maxJobWaitTime Max job wait time.
-     */
+    /** @param maxJobWaitTime Max job wait time. */
     public void maximumJobWaitTime(long maxJobWaitTime) {
         this.maxJobWaitTime = maxJobWaitTime;
     }
@@ -842,11 +777,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return curJobWaitTime;
     }
 
-    /**
-     * Sets current job wait time.
-     *
-     * @param curJobWaitTime Current job wait time.
-     */
+    /** @param curJobWaitTime Current job wait time. */
     public void currentJobWaitTime(long curJobWaitTime) {
         this.curJobWaitTime = curJobWaitTime;
     }
@@ -856,11 +787,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return avgJobWaitTime;
     }
 
-    /**
-     * Sets average job wait time.
-     *
-     * @param avgJobWaitTime Average job wait time.
-     */
+    /** @param avgJobWaitTime Average job wait time. */
     public void averageJobWaitTime(double avgJobWaitTime) {
         this.avgJobWaitTime = avgJobWaitTime;
     }
@@ -870,11 +797,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return maxJobExecTime;
     }
 
-    /**
-     * Sets maximum job execution time.
-     *
-     * @param maxJobExecTime Maximum job execution time.
-     */
+    /** @param maxJobExecTime Maximum job execution time. */
     public void maximumJobExecuteTime(long maxJobExecTime) {
         this.maxJobExecTime = maxJobExecTime;
     }
@@ -884,11 +807,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return curJobExecTime;
     }
 
-    /**
-     * Sets current job execute time.
-     *
-     * @param curJobExecTime Current job execute time.
-     */
+    /** @param curJobExecTime Current job execute time. */
     public void currentJobExecuteTime(long curJobExecTime) {
         this.curJobExecTime = curJobExecTime;
     }
@@ -898,11 +817,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return avgJobExecTime;
     }
 
-    /**
-     * Sets average job execution time.
-     *
-     * @param avgJobExecTime Average job execution time.
-     */
+    /** @param avgJobExecTime Average job execution time. */
     public void averageJobExecuteTime(double avgJobExecTime) {
         this.avgJobExecTime = avgJobExecTime;
     }
@@ -912,11 +827,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return totalExecTasks;
     }
 
-    /**
-     * Sets total executed tasks count.
-     *
-     * @param totalExecTasks total executed tasks count.
-     */
+    /** @param totalExecTasks total executed tasks count. */
     public void totalExecutedTasks(int totalExecTasks) {
         this.totalExecTasks = totalExecTasks;
     }
@@ -926,11 +837,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return totalIdleTime;
     }
 
-    /**
-     * Set total node idle time.
-     *
-     * @param totalIdleTime Total node idle time.
-     */
+    /** @param totalIdleTime Total node idle time. */
     public void totalIdleTime(long totalIdleTime) {
         this.totalIdleTime = totalIdleTime;
     }
@@ -940,11 +847,7 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return curIdleTime;
     }
 
-    /**
-     * Sets time elapsed since execution of last job.
-     *
-     * @param curIdleTime Time elapsed since execution of last job.
-     */
+    /** @param curIdleTime Time elapsed since execution of last job. */
     public void currentIdleTime(long curIdleTime) {
         this.curIdleTime = curIdleTime;
     }
@@ -1104,245 +1007,137 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
         return getTotalIdleTime() / (float)getUpTime();
     }
 
-    /**
-     * Sets available processors.
-     *
-     * @param totalCpus Available processors.
-     */
+    /** @param totalCpus Available processors. */
     public void totalCpus(int totalCpus) {
         this.totalCpus = totalCpus;
     }
 
-    /**
-     * Sets current CPU load.
-     *
-     * @param curCpuLoad Current CPU load.
-     */
+    /** @param curCpuLoad Current CPU load. */
     public void currentCpuLoad(double curCpuLoad) {
         this.curCpuLoad = curCpuLoad;
     }
 
-    /**
-     * Sets CPU load average over the metrics history.
-     *
-     * @param avgCpuLoad CPU load average.
-     */
+    /** @param avgCpuLoad CPU load average. */
     public void averageCpuLoad(double avgCpuLoad) {
         this.avgCpuLoad = avgCpuLoad;
     }
 
-    /**
-     * Sets current GC load.
-     *
-     * @param curGcCpuLoad Current GC load.
-     */
+    /** @param curGcCpuLoad Current GC load. */
     public void currentGcCpuLoad(double curGcCpuLoad) {
         this.curGcCpuLoad = curGcCpuLoad;
     }
 
-    /**
-     * Sets heap initial memory.
-     *
-     * @param heapInit Heap initial memory.
-     */
+    /** @param heapInit Heap initial memory. */
     public void heapMemoryInitialized(long heapInit) {
         this.heapInit = heapInit;
     }
 
-    /**
-     * Sets used heap memory.
-     *
-     * @param heapUsed Used heap memory.
-     */
+    /** @param heapUsed Used heap memory. */
     public void heapMemoryUsed(long heapUsed) {
         this.heapUsed = heapUsed;
     }
 
-    /**
-     * Sets committed heap memory.
-     *
-     * @param heapCommitted Committed heap memory.
-     */
+    /** @param heapCommitted Committed heap memory. */
     public void heapMemoryCommitted(long heapCommitted) {
         this.heapCommitted = heapCommitted;
     }
 
-    /**
-     * Sets maximum possible heap memory.
-     *
-     * @param heapMax Maximum possible heap memory.
-     */
+    /** @param heapMax Maximum possible heap memory. */
     public void heapMemoryMaximum(long heapMax) {
         this.heapMax = heapMax;
     }
 
-    /**
-     * Sets initial non-heap memory.
-     *
-     * @param nonHeapInit Initial non-heap memory.
-     */
+    /** @param nonHeapInit Initial non-heap memory. */
     public void nonHeapMemoryInitialized(long nonHeapInit) {
         this.nonHeapInit = nonHeapInit;
     }
 
-    /**
-     * Sets used non-heap memory.
-     *
-     * @param nonHeapUsed Used non-heap memory.
-     */
+    /** @param nonHeapUsed Used non-heap memory. */
     public void nonHeapMemoryUsed(long nonHeapUsed) {
         this.nonHeapUsed = nonHeapUsed;
     }
 
-    /**
-     * Sets committed non-heap memory.
-     *
-     * @param nonHeapCommitted Committed non-heap memory.
-     */
+    /** @param nonHeapCommitted Committed non-heap memory. */
     public void nonHeapMemoryCommitted(long nonHeapCommitted) {
         this.nonHeapCommitted = nonHeapCommitted;
     }
 
-    /**
-     * Sets maximum possible non-heap memory.
-     *
-     * @param nonHeapMax Maximum possible non-heap memory.
-     */
+    /** @param nonHeapMax Maximum possible non-heap memory. */
     public void nonHeapMemoryMaximum(long nonHeapMax) {
         this.nonHeapMax = nonHeapMax;
     }
 
-    /**
-     * Sets VM up time.
-     *
-     * @param upTime VM up time.
-     */
+    /** @param upTime VM up time. */
     public void upTime(long upTime) {
         this.upTime = upTime;
     }
 
-    /**
-     * Sets VM start time.
-     *
-     * @param startTime VM start time.
-     */
+    /** @param startTime VM start time. */
     public void startTime(long startTime) {
         this.startTime = startTime;
     }
 
-    /**
-     * Sets node start time.
-     *
-     * @param nodeStartTime node start time.
-     */
+    /** @param nodeStartTime node start time. */
     public void nodeStartTime(long nodeStartTime) {
         this.nodeStartTime = nodeStartTime;
     }
 
-    /**
-     * Sets thread count.
-     *
-     * @param threadCnt Thread count.
-     */
+    /** @param threadCnt Thread count. */
     public void currentThreadCount(int threadCnt) {
         this.threadCnt = threadCnt;
     }
 
-    /**
-     * Sets peak thread count.
-     *
-     * @param peakThreadCnt Peak thread count.
-     */
+    /** @param peakThreadCnt Peak thread count. */
     public void maximumThreadCount(int peakThreadCnt) {
         this.peakThreadCnt = peakThreadCnt;
     }
 
-    /**
-     * Sets started thread count.
-     *
-     * @param startedThreadCnt Started thread count.
-     */
+    /** @param startedThreadCnt Started thread count. */
     public void totalStartedThreadCount(long startedThreadCnt) {
         this.startedThreadCnt = startedThreadCnt;
     }
 
-    /**
-     * Sets daemon thread count.
-     *
-     * @param daemonThreadCnt Daemon thread count.
-     */
+    /** @param daemonThreadCnt Daemon thread count. */
     public void currentDaemonThreadCount(int daemonThreadCnt) {
         this.daemonThreadCnt = daemonThreadCnt;
     }
 
-    /**
-     * Sets last data version.
-     *
-     * @param lastDataVer Last data version.
-     */
+    /** @param lastDataVer Last data version. */
     public void lastDataVersion(long lastDataVer) {
         this.lastDataVer = lastDataVer;
     }
 
-    /**
-     * Sets sent messages count.
-     *
-     * @param sentMsgsCnt Sent messages count.
-     */
+    /** @param sentMsgsCnt Sent messages count. */
     public void sentMessagesCount(int sentMsgsCnt) {
         this.sentMsgsCnt = sentMsgsCnt;
     }
 
-    /**
-     * Sets sent bytes count.
-     *
-     * @param sentBytesCnt Sent bytes count.
-     */
+    /** @param sentBytesCnt Sent bytes count. */
     public void sentBytesCount(long sentBytesCnt) {
         this.sentBytesCnt = sentBytesCnt;
     }
 
-    /**
-     * Sets received messages count.
-     *
-     * @param rcvdMsgsCnt Received messages count.
-     */
+    /** @param rcvdMsgsCnt Received messages count. */
     public void receivedMessagesCount(int rcvdMsgsCnt) {
         this.rcvdMsgsCnt = rcvdMsgsCnt;
     }
 
-    /**
-     * Sets received bytes count.
-     *
-     * @param rcvdBytesCnt Received bytes count.
-     */
+    /** @param rcvdBytesCnt Received bytes count. */
     public void receivedBytesCount(long rcvdBytesCnt) {
         this.rcvdBytesCnt = rcvdBytesCnt;
     }
 
-    /**
-     * Sets outbound messages queue size.
-     *
-     * @param outMesQueueSize Outbound messages queue size.
-     */
+    /** @param outMesQueueSize Outbound messages queue size. */
     public void outboundMessagesQueueSize(int outMesQueueSize) {
         this.outMesQueueSize = outMesQueueSize;
     }
 
-    /**
-     * Sets total number of nodes.
-     *
-     * @param totalNodes Total number of nodes.
-     */
+    /** @param totalNodes Total number of nodes. */
     public void totalNodes(int totalNodes) {
         this.totalNodes = totalNodes;
     }
 
-    /**
-     * Sets execution duration for current partition map exchange.
-     *
-     * @param curPmeDuration Execution duration for current partition map exchange.
-     */
+    /** @param curPmeDuration Execution duration for current partition map exchange. */
     public void currentPmeDuration(long curPmeDuration) {
         this.curPmeDuration = curPmeDuration;
     }
