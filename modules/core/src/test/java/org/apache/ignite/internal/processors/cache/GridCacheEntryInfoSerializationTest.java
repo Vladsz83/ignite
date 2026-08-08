@@ -31,10 +31,7 @@ import org.junit.Test;
 
 import static org.apache.ignite.marshaller.Marshallers.jdk;
 
-/**
- * Checks how {@link GridCacheEntryInfo} carries the expiration time over the wire. The key and the value are left
- * null: they need a cache object context to marshal and take no part in the expiration.
- */
+/** Checks how {@link GridCacheEntryInfo} carries the expiration time over the wire. */
 public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest {
     /** */
     private static final int CACHE_ID = 42;
@@ -42,20 +39,20 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
     /** */
     private static final GridCacheVersion VER = new GridCacheVersion(1, 2, 3);
 
-    /** The expiration is re-based on a clock that {@link U#currentTimeMillis()} keeps 10 ms coarse. */
+    /** */
     private static final long CLOCK_TOLERANCE = 1_000;
 
     /** */
     private final MessageFactory<?> msgFactory = new IgniteMessageFactoryImpl<>(
         new MessageFactoryProvider[] {new CoreMessagesProvider(jdk(), jdk())});
 
-    /** A never expiring entry keeps the expiration unset on the other side. */
+    /** */
     @Test
     public void testNeverExpiringEntry() {
         assertEquals(0, writeAndReadBack(entryInfo(0)).expireTime());
     }
 
-    /** An expiring entry arrives with the same time left to live, counted from the receiver clock. */
+    /** */
     @Test
     public void testExpiringEntry() {
         long expireTime = U.currentTimeMillis() + 60_000;
@@ -66,7 +63,7 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
             Math.abs(rcvd - expireTime) < CLOCK_TOLERANCE);
     }
 
-    /** An entry past its expiration time stays expired on the other side instead of becoming eternal. */
+    /** */
     @Test
     public void testAlreadyExpiredEntry() {
         long rcvd = writeAndReadBack(entryInfo(U.currentTimeMillis() - 60_000)).expireTime();
@@ -75,10 +72,7 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
         assertTrue("Expired entry is not expired anymore: " + rcvd, rcvd <= U.currentTimeMillis());
     }
 
-    /**
-     * Most caches have no expiry policy, so a never expiring entry is the common case and must stay the cheapest one.
-     * The wire format compresses a long, so a sentinel far from zero costs 10 bytes per entry instead of 1.
-     */
+    /** The wire format compresses a long, so a sentinel far from zero costs 10 bytes per entry instead of 1. */
     @Test
     public void testNeverExpiringEntryIsTheCheapestOnTheWire() {
         int neverExpiring = write(entryInfo(0)).position();
@@ -88,7 +82,7 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
             "takes only " + expiring, neverExpiring < expiring);
     }
 
-    /** Writing the same entry twice gives the same result: marshalling does not mutate the message. */
+    /** */
     @Test
     public void testRepeatedWriteIsIdempotent() {
         GridCacheEntryInfo info = entryInfo(U.currentTimeMillis() + 60_000);
@@ -102,18 +96,12 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
             Math.abs(second - first) < CLOCK_TOLERANCE);
     }
 
-    /**
-     * @param expireTime Absolute expiration time, {@code 0} if the entry never expires.
-     * @return Entry info to transfer.
-     */
+    /** */
     private GridCacheEntryInfo entryInfo(long expireTime) {
         return new GridCacheEntryInfo(CACHE_ID, null, null, VER, expireTime, 0);
     }
 
-    /**
-     * @param info Entry info to transfer.
-     * @return Entry info read back from its own wire form.
-     */
+    /** */
     private GridCacheEntryInfo writeAndReadBack(GridCacheEntryInfo info) {
         ByteBuffer buf = write(info);
 
@@ -130,10 +118,7 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
         return res;
     }
 
-    /**
-     * @param info Entry info to transfer.
-     * @return Buffer positioned right after the written message.
-     */
+    /** @return Buffer positioned right after the written message. */
     private ByteBuffer write(GridCacheEntryInfo info) {
         ByteBuffer buf = ByteBuffer.allocate(1024);
 
