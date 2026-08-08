@@ -54,6 +54,14 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
 
     /** */
     @Test
+    public void testLocalRoundTripIsExact() {
+        long expireTime = U.currentTimeMillis() + 60_000;
+
+        assertEquals(expireTime, entryInfo(expireTime).expireTime());
+    }
+
+    /** */
+    @Test
     public void testExpiringEntry() {
         long expireTime = U.currentTimeMillis() + 60_000;
 

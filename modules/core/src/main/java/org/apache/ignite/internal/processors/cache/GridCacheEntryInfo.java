@@ -59,6 +59,9 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     @Order(5)
     GridCacheVersion ver;
 
+    /** Base of {@link #expireTimeDelta}: entry creation on the sender, message creation on the receiver. */
+    private long initTime;
+
     /** New flag. */
     private boolean isNew;
 
@@ -67,15 +70,17 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
 
     /** */
     public GridCacheEntryInfo() {
-        // No-op.
+        initTime = U.currentTimeMillis();
     }
 
     /** */
     public GridCacheEntryInfo(int cacheId, KeyCacheObject key, @Nullable CacheObject val, GridCacheVersion ver,
         long expireTime, long ttl) {
+        initTime = U.currentTimeMillis();
+
         // Negative values are reserved for the never expiring entry.
         if (expireTime != 0)
-            expireTimeDelta = Math.max(0, expireTime - U.currentTimeMillis());
+            expireTimeDelta = Math.max(0, expireTime - initTime);
 
         this.cacheId = cacheId;
         this.key = key;
@@ -111,13 +116,13 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     }
 
     /**
-     * @return Expire time, counted from now.
+     * @return Expire time.
      */
     public long expireTime() {
         if (expireTimeDelta < 0)
             return 0;
 
-        long expireTime = U.currentTimeMillis() + expireTimeDelta;
+        long expireTime = initTime + expireTimeDelta;
 
         // Account for overflow.
         return expireTime < 0 ? 0 : expireTime;
@@ -176,8 +181,7 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
         if (val != null)
             size += val.valueBytes(ctx).length;
 
-        if (key != null)
-            size += key.valueBytes(ctx).length;
+        size += key.valueBytes(ctx).length;
 
         return SIZE_OVERHEAD + size;
     }
