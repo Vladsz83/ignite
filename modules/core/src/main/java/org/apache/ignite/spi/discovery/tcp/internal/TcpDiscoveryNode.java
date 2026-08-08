@@ -112,7 +112,7 @@ public class TcpDiscoveryNode extends GridMetadataAwareAdapter implements Ignite
 
     /** Node cache metrics. */
     @GridToStringExclude
-    private volatile Map<Integer, CacheMetrics> cacheMetricsSnapshot;
+    private volatile Map<Integer, CacheMetrics> cacheMetrics;
 
     /** Node order in the topology. */
     @Order(7)
@@ -209,6 +209,9 @@ public class TcpDiscoveryNode extends GridMetadataAwareAdapter implements Ignite
         this.ver = ver;
 
         this.consistentId = consistentId != null ? consistentId : U.consistentId(sortedAddrs, discPort);
+
+        // The node travels over the wire with its metrics, so they must be there from the very beginning.
+        clusterMetricsSnapshot = ClusterMetricsSnapshot.of(metricsProvider.metrics());
 
         sockAddrs = U.toSocketAddresses(this, discPort);
     }
@@ -309,17 +312,16 @@ public class TcpDiscoveryNode extends GridMetadataAwareAdapter implements Ignite
 
     /** {@inheritDoc} */
     @Override public Map<Integer, CacheMetrics> cacheMetrics() {
-        if (metricsProvider != null) {
-            // TODO : Revise in https://issues.apache.org/jira/browse/IGNITE-28965
-            cacheMetricsSnapshot = metricsProvider.cacheMetrics();
-        }
+        // TODO: IGNITE-28965, Do not keep the provided metrics on a node having the provider.
+        if (metricsProvider != null)
+            cacheMetrics = metricsProvider.cacheMetrics();
 
-        return cacheMetricsSnapshot;
+        return cacheMetrics;
     }
 
     /** {@inheritDoc} */
     @Override public void setCacheMetrics(Map<Integer, CacheMetrics> cacheMetrics) {
-        this.cacheMetricsSnapshot = cacheMetrics != null ? cacheMetrics : Collections.emptyMap();
+        this.cacheMetrics = cacheMetrics != null ? cacheMetrics : Collections.emptyMap();
     }
 
     /**
@@ -580,7 +582,7 @@ public class TcpDiscoveryNode extends GridMetadataAwareAdapter implements Ignite
         // Cluster metrics
         byte[] mtr = null;
 
-        var metrics = this.clusterMetricsSnapshot;
+        ClusterMetricsSnapshot metrics = clusterMetricsSnapshot;
 
         if (metrics != null)
             mtr = ClusterMetricsSnapshot.serialize(metrics);
