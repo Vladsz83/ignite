@@ -314,8 +314,9 @@ public class ClusterMetricsSnapshot implements ClusterMetrics, Message {
     /** */
     public long lastUpdateTime = -1;
 
-    /** Creates empty metrics. Update time is the creation time, same as in {@link #deserialize(byte[], int)}. */
+    /** Empty constructor for serialization purposes. */
     public ClusterMetricsSnapshot() {
+        // Like in deserialize().
         lastUpdateTime = U.currentTimeMillis();
     }
 

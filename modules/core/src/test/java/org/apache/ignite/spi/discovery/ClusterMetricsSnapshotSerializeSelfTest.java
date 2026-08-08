@@ -17,6 +17,11 @@
 
 package org.apache.ignite.spi.discovery;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import org.apache.ignite.cluster.ClusterMetrics;
 import org.apache.ignite.internal.ClusterMetricsSnapshot;
 import org.apache.ignite.testframework.junits.common.GridCommonAbstractTest;
@@ -63,34 +68,39 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
         assert res != null;
     }
 
-    /** Every getter must return the value its own setter assigned. */
+    /** The test values must stay unique, otherwise a getter reading a neighbour field goes unnoticed. */
     @Test
-    public void testGetters() {
+    public void testDistinctValues() throws Exception {
         ClusterMetrics metrics = createMetrics();
 
-        assertMetrics(metrics);
+        Collection<Double> vals = new HashSet<>();
 
-        assertEquals(21, metrics.getLastUpdateTime());
+        for (Field f : transferredFields())
+            assertTrue("Duplicate test value: " + f.getName(), vals.add(((Number)f.get(metrics)).doubleValue()));
     }
 
-    /** The copying constructor must keep all the values. */
+    /** The copying constructor reads the getters, so it also proves every getter returns its own field. */
     @Test
-    public void testCopy() {
-        assertMetrics(new ClusterMetricsSnapshot(createMetrics()));
+    public void testCopy() throws Exception {
+        ClusterMetrics metrics = createMetrics();
+
+        assertTransferredFieldsEqual(metrics, new ClusterMetricsSnapshot(metrics));
     }
 
     /** */
     @Test
-    public void testSerialization() {
+    public void testSerialization() throws Exception {
         byte[] data = new byte[ClusterMetricsSnapshot.METRICS_SIZE];
 
+        ClusterMetrics metrics1 = createMetrics();
+
         // Test serialization.
-        int off = ClusterMetricsSnapshot.serialize(data, 0, createMetrics());
+        int off = ClusterMetricsSnapshot.serialize(data, 0, metrics1);
 
         assertEquals(ClusterMetricsSnapshot.METRICS_SIZE, off);
 
-        // Test deserialization. Last update time is intentionally not restored, see #deserialize().
-        assertMetrics(ClusterMetricsSnapshot.deserialize(data, 0));
+        // Test deserialization. Last update time is not transferred, deserialize() sets the receiving time instead.
+        assertTransferredFieldsEqual(metrics1, ClusterMetricsSnapshot.deserialize(data, 0));
     }
 
     /**
@@ -169,65 +179,31 @@ public class ClusterMetricsSnapshotSerializeSelfTest extends GridCommonAbstractT
     }
 
     /**
-     * Checks the metrics against the values assigned in {@link #createMetrics()}. Last update time is skipped:
-     * {@link ClusterMetricsSnapshot#deserialize(byte[], int)} replaces it with the local receiving time.
-     *
-     * @param m Metrics to check.
+     * @param exp Expected metrics.
+     * @param act Actual metrics.
      */
-    private void assertMetrics(ClusterMetrics m) {
-        assertEquals(1, m.getTotalCpus());
-        assertEquals(2, m.getAverageActiveJobs(), 0);
-        assertEquals(3, m.getAverageCancelledJobs(), 0);
-        assertEquals(4, m.getAverageJobExecuteTime(), 0);
-        assertEquals(5, m.getAverageJobWaitTime(), 0);
-        assertEquals(6, m.getAverageRejectedJobs(), 0);
-        assertEquals(7, m.getAverageWaitingJobs(), 0);
-        assertEquals(8, m.getCurrentActiveJobs());
-        assertEquals(9, m.getCurrentCancelledJobs());
-        assertEquals(11, m.getCurrentIdleTime());
-        assertEquals(12, m.getCurrentJobExecuteTime());
-        assertEquals(13, m.getCurrentJobWaitTime());
-        assertEquals(14, m.getCurrentRejectedJobs());
-        assertEquals(15, m.getCurrentWaitingJobs());
-        assertEquals(16, m.getCurrentDaemonThreadCount());
-        assertEquals(17, m.getHeapMemoryCommitted());
-        assertEquals(18, m.getHeapMemoryInitialized());
-        assertEquals(19, m.getHeapMemoryMaximum());
-        assertEquals(20, m.getHeapMemoryUsed());
-        assertEquals(22, m.getMaximumActiveJobs());
-        assertEquals(23, m.getMaximumCancelledJobs());
-        assertEquals(24, m.getMaximumJobExecuteTime());
-        assertEquals(25, m.getMaximumJobWaitTime());
-        assertEquals(26, m.getMaximumRejectedJobs());
-        assertEquals(27, m.getMaximumWaitingJobs());
-        assertEquals(28, m.getNonHeapMemoryCommitted());
-        assertEquals(29, m.getNonHeapMemoryInitialized());
-        assertEquals(30, m.getNonHeapMemoryMaximum());
-        assertEquals(31, m.getNonHeapMemoryUsed());
-        assertEquals(32, m.getMaximumThreadCount());
-        assertEquals(33, m.getStartTime());
-        assertEquals(34, m.getCurrentCpuLoad(), 0);
-        assertEquals(35, m.getCurrentThreadCount());
-        assertEquals(36, m.getTotalCancelledJobs());
-        assertEquals(37, m.getTotalExecutedJobs());
-        assertEquals(38, m.getTotalIdleTime());
-        assertEquals(39, m.getTotalRejectedJobs());
-        assertEquals(40, m.getTotalStartedThreadCount());
-        assertEquals(41, m.getUpTime());
-        assertEquals(42, m.getSentMessagesCount());
-        assertEquals(43, m.getSentBytesCount());
-        assertEquals(44, m.getReceivedMessagesCount());
-        assertEquals(45, m.getReceivedBytesCount());
-        assertEquals(46, m.getOutboundMessagesQueueSize());
-        assertEquals(47, m.getNonHeapMemoryTotal());
-        assertEquals(48, m.getHeapMemoryTotal());
-        assertEquals(49, m.getTotalNodes());
-        assertEquals(50, m.getTotalJobsExecutionTime());
-        assertEquals(51, m.getCurrentPmeDuration());
-        assertEquals(52, m.getAverageCpuLoad(), 0);
-        assertEquals(53, m.getCurrentGcCpuLoad(), 0);
-        assertEquals(54, m.getLastDataVersion());
-        assertEquals(55, m.getNodeStartTime());
-        assertEquals(56, m.getTotalExecutedTasks());
+    private void assertTransferredFieldsEqual(Object exp, Object act) throws Exception {
+        for (Field f : transferredFields())
+            assertEquals(f.getName(), f.get(exp), f.get(act));
+    }
+
+    /**
+     * The transferred state is kept in the public fields, {@code @Order} itself is not visible at runtime. Last
+     * update time is public too, but it is not transferred: the receiver stamps its own time.
+     *
+     * @return Fields the node metrics are transferred with.
+     */
+    private Collection<Field> transferredFields() {
+        Collection<Field> res = new ArrayList<>();
+
+        for (Field f : ClusterMetricsSnapshot.class.getDeclaredFields()) {
+            if (Modifier.isPublic(f.getModifiers()) && !Modifier.isStatic(f.getModifiers())
+                && !"lastUpdateTime".equals(f.getName()))
+                res.add(f);
+        }
+
+        assertFalse(res.isEmpty());
+
+        return res;
     }
 }
