@@ -29,6 +29,7 @@ import org.apache.ignite.cache.CacheMetrics;
 import org.apache.ignite.cache.affinity.AffinityFunctionContext;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.cluster.ClusterMetrics;
+import org.apache.ignite.internal.ClusterMetricsSnapshot;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.events.DiscoveryEvent;
 import org.apache.ignite.internal.processors.affinity.AffinityAssignment;
@@ -49,7 +50,7 @@ public class GridAffinityAssignmentJolBenchmark {
     /**  */
     private static DiscoveryMetricsProvider metrics = new DiscoveryMetricsProvider() {
         @Override public ClusterMetrics metrics() {
-            return null;
+            return new ClusterMetricsSnapshot();
         }
 
         @Override public Map<Integer, CacheMetrics> cacheMetrics() {

@@ -21,6 +21,7 @@ import java.io.Serializable;
 import java.util.Map;
 import org.apache.ignite.cache.CacheMetrics;
 import org.apache.ignite.cluster.ClusterMetrics;
+import org.apache.ignite.internal.ClusterMetricsSnapshot;
 import org.apache.ignite.spi.discovery.DiscoveryMetricsProvider;
 
 /**
@@ -29,7 +30,7 @@ import org.apache.ignite.spi.discovery.DiscoveryMetricsProvider;
 public class SerializableMetricsProvider implements DiscoveryMetricsProvider, Serializable {
     /** {@inheritDoc} */
     @Override public ClusterMetrics metrics() {
-        return null;
+        return new ClusterMetricsSnapshot();
     }
 
     /** {@inheritDoc} */
