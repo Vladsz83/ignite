@@ -46,6 +46,12 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
     private final MessageFactory<?> msgFactory = new IgniteMessageFactoryImpl<>(
         new MessageFactoryProvider[] {new CoreMessagesProvider(jdk(), jdk())});
 
+    /** The mark of a never expiring entry has to survive the transfer, so it has to live in a transferred field. */
+    @Test
+    public void testNeverExpiringEntryStaysNeverExpiring() {
+        assertEquals(0, writeAndReadBack(entryInfo(0)).expireTime());
+    }
+
     /** The wire format compresses a long, so a sentinel far from zero costs 10 bytes per entry instead of 1. */
     @Test
     public void testNeverExpiringEntryIsTheCheapestOnTheWire() {

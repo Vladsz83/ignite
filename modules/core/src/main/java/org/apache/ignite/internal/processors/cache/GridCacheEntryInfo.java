@@ -68,14 +68,18 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     /** Deleted flag. */
     private boolean deleted;
 
-    /** */
+    /**
+     * Empty constructor for serialization purposes.
+     * see {@link #expireTimeDelta}.
+     */
     public GridCacheEntryInfo() {
         initTime = U.currentTimeMillis();
     }
 
     /** */
-    public GridCacheEntryInfo(int cacheId, KeyCacheObject key, @Nullable CacheObject val, GridCacheVersion ver,
-        long expireTime, long ttl) {
+    public GridCacheEntryInfo(int cacheId, KeyCacheObject key, @Nullable CacheObject val, GridCacheVersion ver, long expireTime, long ttl) {
+        assert expireTime >= 0;
+
         initTime = U.currentTimeMillis();
 
         // Negative values are reserved for the never expiring entry.
@@ -116,7 +120,7 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     }
 
     /**
-     * @return Expire time.
+     * @return Expire time >= 0. 0 means no expiration is set.
      */
     public long expireTime() {
         if (expireTimeDelta < 0)
