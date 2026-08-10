@@ -51,12 +51,17 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     @Order(3)
     long ttl;
 
-    /** Not transferred. Base of {@link #expireTimeDelta}: entry creation on the sender, message creation on the receiver. */
-    private long initTime;
+    /** Base time to calculate {@link #expireTime()}. 0 if no expiration is used. */
+    long initTime;
 
-    /** Time left to live, {@code -1} if the entry never expires. Absolute time would shift with the clock difference. */
+    /**
+     * Expiration time delta to transfer. {@link Long#MIN_VALUE} means no expiration enabled. In theory, we can get
+     * the calculating time delta thread paused causing a negative delta value. This shouldn't be treated as disabled
+     * expiration. Correct behavior is expired timeout. {@link Long#MIN_VALUE} is taken as one with unrealistic chance
+     * to appear.
+     */
     @Order(4)
-    long expireTimeDelta = -1;
+    long expireTimeDelta = Long.MIN_VALUE;
 
     /** Entry version. */
     @Order(5)
@@ -80,11 +85,13 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     public GridCacheEntryInfo(int cacheId, KeyCacheObject key, @Nullable CacheObject val, GridCacheVersion ver, long expireTime, long ttl) {
         assert expireTime >= 0;
 
-        initTime = U.currentTimeMillis();
+        if (expireTime != 0) {
+            // In theory, here we can get the thread paused causing a negative delta value. Possible negative values
+            // shouldn't be treated as disabled expiration. Correct behavior is expired timeout.
+            initTime = U.currentTimeMillis();
 
-        // Negative values are reserved for the never expiring entry.
-        if (expireTime != 0)
-            expireTimeDelta = Math.max(0, expireTime - initTime);
+            expireTimeDelta = expireTime - initTime;
+        }
 
         this.cacheId = cacheId;
         this.key = key;
@@ -123,7 +130,7 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
      * @return Expire time >= 0. 0 means no expiration is set.
      */
     public long expireTime() {
-        if (expireTimeDelta < 0)
+        if (expireTimeDelta == Long.MIN_VALUE)
             return 0;
 
         long expireTime = initTime + expireTimeDelta;

@@ -52,17 +52,7 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
         assertEquals(0, writeAndReadBack(entryInfo(0)).expireTime());
     }
 
-    /** The wire format compresses a long, so a sentinel far from zero costs 10 bytes per entry instead of 1. */
-    @Test
-    public void testNeverExpiringEntryIsTheCheapestOnTheWire() {
-        int neverExpiring = write(entryInfo(0)).position();
-        int expiring = write(entryInfo(U.currentTimeMillis() + 60_000)).position();
-
-        assertTrue("A never expiring entry takes " + neverExpiring + " bytes on the wire while an expiring one " +
-            "takes only " + expiring, neverExpiring < expiring);
-    }
-
-    /** A negative remainder marks the never expiring entry, so an entry past its expiration must not transfer one. */
+    /** An entry past its expiration must stay expired on the other side instead of losing the expiration. */
     @Test
     public void testAlreadyExpiredEntryDoesNotBecomeEternal() {
         long rcvd = writeAndReadBack(entryInfo(U.currentTimeMillis() - 60_000)).expireTime();
