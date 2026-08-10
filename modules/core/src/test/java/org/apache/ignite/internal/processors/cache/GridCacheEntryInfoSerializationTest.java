@@ -61,6 +61,12 @@ public class GridCacheEntryInfoSerializationTest extends GridCommonAbstractTest 
         assertTrue("Expired entry is not expired anymore: " + rcvd, rcvd <= U.currentTimeMillis());
     }
 
+    /** GridCacheMapEntry.info() of a cache with no expiry policy, read locally without any transfer. */
+    @Test
+    public void testLocalNeverExpiringEntry() {
+        assertEquals(0, entryInfo(0).expireTime());
+    }
+
     /** */
     private GridCacheEntryInfo entryInfo(long expireTime) {
         return new GridCacheEntryInfo(CACHE_ID, null, null, VER, expireTime, 0);

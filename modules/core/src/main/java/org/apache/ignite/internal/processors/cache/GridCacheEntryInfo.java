@@ -51,17 +51,12 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     @Order(3)
     long ttl;
 
-    /** Base time to calculate {@link #expireTime()}. 0 if no expiration is used. */
+    /** Base time to calculate {@link #expireTime()}. */
     long initTime;
 
-    /**
-     * Expiration time delta to transfer. {@link Long#MIN_VALUE} means no expiration enabled. In theory, we can get
-     * the calculating time delta thread paused causing a negative delta value. This shouldn't be treated as disabled
-     * expiration. Correct behavior is expired timeout. {@link Long#MIN_VALUE} is taken as one with unrealistic chance
-     * to appear.
-     */
+    /** Expiration time delta to transfer. -1 if no expiration is used. */
     @Order(4)
-    long expireTimeDelta = Long.MIN_VALUE;
+    long expireTimeDelta = -1L;
 
     /** Entry version. */
     @Order(5)
@@ -85,12 +80,15 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
     public GridCacheEntryInfo(int cacheId, KeyCacheObject key, @Nullable CacheObject val, GridCacheVersion ver, long expireTime, long ttl) {
         assert expireTime >= 0;
 
+        initTime = U.currentTimeMillis();
+
         if (expireTime != 0) {
+            expireTimeDelta = expireTime - initTime;
+
             // In theory, here we can get the thread paused causing a negative delta value. Possible negative values
             // shouldn't be treated as disabled expiration. Correct behavior is expired timeout.
-            initTime = U.currentTimeMillis();
-
-            expireTimeDelta = expireTime - initTime;
+            if (expireTimeDelta < 0)
+                expireTimeDelta = 0;
         }
 
         this.cacheId = cacheId;
@@ -130,7 +128,10 @@ public class GridCacheEntryInfo implements CacheIdAware, Message {
      * @return Expire time >= 0. 0 means no expiration is set.
      */
     public long expireTime() {
-        if (expireTimeDelta == Long.MIN_VALUE)
+        assert initTime > 0;
+        assert expireTimeDelta >= -1L;
+
+        if (expireTimeDelta == -1L)
             return 0;
 
         long expireTime = initTime + expireTimeDelta;
