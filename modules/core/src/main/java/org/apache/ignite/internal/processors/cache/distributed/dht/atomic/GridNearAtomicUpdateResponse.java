@@ -78,7 +78,9 @@ public class GridNearAtomicUpdateResponse extends GridCacheIdMessage implements 
     List<UUID> mapping;
 
     /** */
-    private boolean nodeLeft;
+    @GridToStringInclude
+    @Order(7)
+    boolean nodeLeft;
 
     /**
      * Empty constructor.
@@ -198,9 +200,13 @@ public class GridNearAtomicUpdateResponse extends GridCacheIdMessage implements 
 
     /**
      * @param remapTopVer Topology version to remap update.
+     * @param nodeStopping Node-is-stopping flag. If {@link #nodeLeft} is already set, ignored.
      */
-    public void remapTopologyVersion(AffinityTopologyVersion remapTopVer) {
+    public void remapTopologyVersion(AffinityTopologyVersion remapTopVer, boolean nodeStopping) {
         this.remapTopVer = remapTopVer;
+
+        if (!nodeLeft)
+            nodeLeft = nodeStopping;
     }
 
     /**
