@@ -33,8 +33,8 @@ import org.apache.ignite.internal.GridKernalContext;
 import org.apache.ignite.internal.IgniteInternalFuture;
 import org.apache.ignite.internal.NodeStoppingException;
 import org.apache.ignite.internal.util.distributed.DistributedProcess;
-import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.future.GridFinishedFuture;
+import org.apache.ignite.internal.util.future.GridFutureAdapter;
 import org.apache.ignite.internal.util.future.IgniteFutureImpl;
 import org.apache.ignite.internal.util.typedef.F;
 import org.apache.ignite.lang.IgniteFuture;
@@ -49,12 +49,6 @@ import static org.apache.ignite.plugin.security.SecurityPermission.ADMIN_SNAPSHO
 public class SnapshotListProcess {
     /** Status: snapshot is in process of creation. */
     static final String STATUS_CREATING = "CREATING";
-
-    /** Status: snapshot is in process of deletion. */
-    static final String STATUS_DELETING = "DELETING";
-
-    /** Status: snapshot is in process of restore. */
-    static final String STATUS_RESTORING = "RESTORING";
 
     /** Kernal context. */
     private final GridKernalContext kctx;
@@ -147,21 +141,8 @@ public class SnapshotListProcess {
                 for (File dir : dirs) {
                     String snpName = dir.getName();
 
-                    if (isSnapshotCreating(snpMgr, snpName) || isSnapshotRestoring(snpMgr, snpName)) {
+                    if (isSnapshotCreating(snpMgr, snpName) || isSnapshotRestoring(snpMgr, snpName))
                         statuses.put(snpName, STATUS_CREATING);
-                    }
-                    else if (snpMgr.isSnapshotDeleting(snpName, req.snpPath)) {
-                        statuses.put(snpName, STATUS_DELETING);
-                    }
-                    else {
-                        try {
-                            sizes.put(snpName, directorySize(dir));
-                        }
-                        catch (IOException e) {
-                            // Snapshot might be modified between listing and size calculation.
-                            statuses.put(snpName, STATUS_DELETING);
-                        }
-                    }
                 }
             }
 

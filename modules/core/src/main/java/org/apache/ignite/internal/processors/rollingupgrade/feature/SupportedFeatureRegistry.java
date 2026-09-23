@@ -95,5 +95,5 @@ public class SupportedFeatureRegistry {
     public static final IgniteFeature ROLLING_UPGRADE_FEATURE = new IgniteCoreFeature(0);
 
     /** */
-    public static final IgniteFeature SNAPSHOT_DELETE_FEATURE = new IgniteCoreFeature(1);
+    public static final IgniteFeature SNAPSHOT_LIST_FEATURE = new IgniteCoreFeature(1);
 }

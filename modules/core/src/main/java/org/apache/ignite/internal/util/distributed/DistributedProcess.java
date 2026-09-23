@@ -521,11 +521,6 @@ public class DistributedProcess<I extends Message, R extends Message> {
         RU_ABORT_VERSION_FINALIZATION,
 
         /**
-         * Delete snapshot procedure.
-         */
-        DELETE_SNAPSHOT,
-
-        /**
          * List snapshots procedure.
          */
         LIST_SNAPSHOTS

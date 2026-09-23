@@ -222,14 +222,14 @@ public class GridCommandHandlerListSnapshotTest extends GridCommandHandlerAbstra
      * Counts occurrences of the node prefix in the output.
      */
     private int countNodeOccurrences(String output) {
-        int count = 0;
+        int cnt = 0;
         int idx = 0;
 
         while ((idx = output.indexOf(SnapshotListCommand.NODE_PREF, idx)) != -1) {
-            count++;
+            cnt++;
             idx += SnapshotListCommand.NODE_PREF.length();
         }
 
-        return count;
+        return cnt;
     }
 }

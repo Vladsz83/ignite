@@ -287,54 +287,9 @@ control.(sh|bat) --snapshot restore snapshot_09062021 --groups cache-group1,cach
 control.(sh|bat) --snapshot restore snapshot_09062021 --increment 1
 ----
 
-== Deleting Snapshot
-
-You can delete a snapshot using the `control.sh|bat` script.
-
-The deletion is performed on all *online* server nodes of the cluster.
-[NOTE]
-====
-The snapshot integrity, topology and correctness aren't checked. Snapshot data on offline server nodes aren't deleted.
-====
-
-[tabs]
---
-tab:Unix[]
-[source,shell]
-----
-# Delete the snapshot "snapshot_09062021".
-control.sh --snapshot delete snapshot_09062021
-
-# Delete the snapshot "snapshot_09062021" located in the "/tmp/ignite/snapshots" folder.
-control.sh --snapshot delete snapshot_09062021 --src /tmp/ignite/snapshots
-----
-
-tab:Windows[]
-[source,shell]
-----
-# Delete the snapshot "snapshot_09062021".
-control.bat --snapshot delete snapshot_09062021
-
-# Delete the snapshot "snapshot_09062021" located in the "/tmp/ignite/snapshots" folder.
-control.bat --snapshot delete snapshot_09062021 --src /tmp/ignite/snapshots
-----
---
-
-=== Delete operation limitations
-
-The delete operation is subject to the following limitations:
-
-* The deletion is rejected if any snapshot operation with the same name (create, restore, check, or a delete with the same name) is
-  active for the snapshot.
-* The operation cannot be undone and the deleted snapshot cannot be restored. The command prompts for a confirmation.
-* Before deletion, no snapshot validation is done except finding and reading its metadata. If the metadata isn't found or cannot be read, snapshot isn't deleted.
-* If the provided snapshot path belongs to Ignite's home or to Ignite's a not snapshot work directory, the operation fails.
-
 == Listing Snapshots
 
-You can list all snapshots and their sizes on all online server nodes using the `control.sh|bat` script.
-
-The list operation is performed on all *online* server nodes of the cluster. The output shows each snapshot found on each node along with its disk usage. If a snapshot is currently being created or deleted, the command reports its transient status instead of the size.
+To list snapshots created on cluster, use the following command.
 
 [tabs]
 --
@@ -367,21 +322,21 @@ The command output displays per-node information:
 ----
 Node consistent-id [node-uuid]:
   snapshot_name: <size>
-  snapshot_name: CREATING
-  snapshot_name: DELETING
+  snapshot_name: CREATING (DELETING)
 ----
 
 Where:
 
 * `<size>` - human-readable size of the snapshot on disk (e.g., `1.5 GB`).
 * `CREATING` - the snapshot is in the process of being created on this node. The size is not calculated.
-* `DELETING` - the snapshot is in the process of being deleted on this node. The size is not calculated.
 
 === List operation notes
 
 * The list operation is read-only and does not modify any snapshot data.
-* If a snapshot is in a transient state (being created or deleted), its size is not reported. Instead, the command shows the corresponding status.
-* Snapshot data on offline server nodes is not reported.
+* If a snapshot is in a transient state (being created or deleted), its size is not reported.
+* Snapshot is being detected by its metadata. If metadata is missing or cannot be read, snapshot directory is ignored.
+* When snapshot listing and size calculating, no additional snapshot validation is done. Files, its' headers aren't read,
+no checksums are calculated, etc.
 
 == Getting Snapshot Operation Status
 
