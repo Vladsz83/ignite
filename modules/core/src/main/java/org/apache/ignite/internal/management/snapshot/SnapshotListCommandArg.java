@@ -17,20 +17,28 @@
 
 package org.apache.ignite.internal.management.snapshot;
 
-import org.apache.ignite.internal.management.api.CommandRegistryImpl;
+import org.apache.ignite.internal.Order;
+import org.apache.ignite.internal.dto.IgniteDataTransferObject;
+import org.apache.ignite.internal.management.api.Argument;
 
-/** Snapshot commands. */
-public class SnapshotCommand extends CommandRegistryImpl {
+/** */
+public class SnapshotListCommandArg extends IgniteDataTransferObject {
     /** */
-    public SnapshotCommand() {
-        super(
-            new SnapshotCreateCommand(),
-            new SnapshotCancelCommand(),
-            new SnapshotCheckCommand(),
-            new SnapshotRestoreCommand(),
-            new SnapshotStatusCommand(),
-            new SnapshotDeleteCommand(),
-            new SnapshotListCommand()
-        );
+    private static final long serialVersionUID = 0;
+
+    /** */
+    @Order(0)
+    @Argument(example = "path", optional = true, description = "Path to snapshot location directory. If not specified " +
+        "or specified a relative path, the default snapshot configuration directory will be used")
+    String src;
+
+    /** */
+    public String src() {
+        return src;
+    }
+
+    /** */
+    public void src(String src) {
+        this.src = src;
     }
 }

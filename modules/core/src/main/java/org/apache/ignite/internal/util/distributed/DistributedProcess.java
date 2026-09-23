@@ -523,6 +523,11 @@ public class DistributedProcess<I extends Message, R extends Message> {
         /**
          * Delete snapshot procedure.
          */
-        DELETE_SNAPSHOT
+        DELETE_SNAPSHOT,
+
+        /**
+         * List snapshots procedure.
+         */
+        LIST_SNAPSHOTS
     }
 }

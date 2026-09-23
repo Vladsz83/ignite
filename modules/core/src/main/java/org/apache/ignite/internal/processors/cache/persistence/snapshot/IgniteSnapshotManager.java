@@ -348,6 +348,9 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
     /** Distributed process to delete cluster snapshot. */
     private final SnapshotDeleteProcess deleteSnpProc;
 
+    /** Distributed process to list cluster snapshots. */
+    private final SnapshotListProcess listSnpProc;
+
     /** Check previously performed snapshot operation and delete uncompleted files if we need. */
     private final DistributedProcess<SnapshotOperationEndRequest, SnapshotOperationResponse> endSnpProc;
 
@@ -451,6 +454,8 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
         checkSnpProc = new SnapshotCheckProcess(ctx);
 
         deleteSnpProc = new SnapshotDeleteProcess(ctx);
+
+        listSnpProc = new SnapshotListProcess(ctx);
 
         // Manage remote snapshots.
         snpRmtMgr = new SequentialRemoteSnapshotManager();
@@ -671,6 +676,7 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
         restoreCacheGrpProc.interrupt(stopErr);
         checkSnpProc.interrupt(stopErr);
         deleteSnpProc.interrupt(stopErr);
+        listSnpProc.interrupt(stopErr);
 
         // Try stop all snapshot processing if not yet.
         for (AbstractSnapshotFutureTask<?> sctx : locSnpTasks.values())
@@ -1544,6 +1550,16 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
      */
     public IgniteFuture<SnapshotDeleteProcessResult> deleteSnapshot(String name, @Nullable String snpPath) {
         return deleteSnpProc.start(name, snpPath);
+    }
+
+    /**
+     * Provides list of snapshots on all online server nodes.
+     *
+     * @param snpPath Snapshot directory path. If {@code null}, the default configured snapshot directory will be used.
+     * @return Future which will be completed when the snapshot list is gathered from all the online server nodes.
+     */
+    public IgniteFuture<SnapshotListProcessResult> listSnapshots(@Nullable String snpPath) {
+        return listSnpProc.start(snpPath);
     }
 
     /**

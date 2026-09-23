@@ -330,6 +330,59 @@ The delete operation is subject to the following limitations:
 * Before deletion, no snapshot validation is done except finding and reading its metadata. If the metadata isn't found or cannot be read, snapshot isn't deleted.
 * If the provided snapshot path belongs to Ignite's home or to Ignite's a not snapshot work directory, the operation fails.
 
+== Listing Snapshots
+
+You can list all snapshots and their sizes on all online server nodes using the `control.sh|bat` script.
+
+The list operation is performed on all *online* server nodes of the cluster. The output shows each snapshot found on each node along with its disk usage. If a snapshot is currently being created or deleted, the command reports its transient status instead of the size.
+
+[tabs]
+--
+tab:Unix[]
+[source,shell]
+----
+# List all snapshots in the default snapshot directory.
+control.sh --snapshot list
+
+# List all snapshots in the "/tmp/ignite/snapshots" folder.
+control.sh --snapshot list --src /tmp/ignite/snapshots
+----
+
+tab:Windows[]
+[source,shell]
+----
+# List all snapshots in the default snapshot directory.
+control.bat --snapshot list
+
+# List all snapshots in the "/tmp/ignite/snapshots" folder.
+control.bat --snapshot list --src /tmp/ignite/snapshots
+----
+--
+
+=== Output format
+
+The command output displays per-node information:
+
+[source,text]
+----
+Node consistent-id [node-uuid]:
+  snapshot_name: <size>
+  snapshot_name: CREATING
+  snapshot_name: DELETING
+----
+
+Where:
+
+* `<size>` - human-readable size of the snapshot on disk (e.g., `1.5 GB`).
+* `CREATING` - the snapshot is in the process of being created on this node. The size is not calculated.
+* `DELETING` - the snapshot is in the process of being deleted on this node. The size is not calculated.
+
+=== List operation notes
+
+* The list operation is read-only and does not modify any snapshot data.
+* If a snapshot is in a transient state (being created or deleted), its size is not reported. Instead, the command shows the corresponding status.
+* Snapshot data on offline server nodes is not reported.
+
 == Getting Snapshot Operation Status
 
 The status of the current snapshot operation in the cluster can be obtained using the `control.sh|bat` script or JMX interface:
