@@ -1410,8 +1410,8 @@ public class IgniteClusterSnapshotCheckTest extends AbstractSnapshotSelfTest {
     /**
      * Tests concurrent snapshot operations related to the snapshot checking.
      *
-     * @param firstOp First snapshot operation on an originator node.
-     * @param secondOp Second concurrent snapshot operation on a trier node.
+     * @param originatorOp First snapshot operation on an originator node.
+     * @param trierOp Second concurrent snapshot operation on a trier node.
      * @param firstDelay First distributed process full message of {@code originatorOp} to delay on the coordinator
      *                            to launch {@code trierOp}.
      * @param secondDelay Second distributed process full message of {@code originatorOp} to delay on the coordinator
@@ -1423,8 +1423,8 @@ public class IgniteClusterSnapshotCheckTest extends AbstractSnapshotSelfTest {
      * @param cleaner If not {@code null}, is executed at the end.
      */
     private void doTestConcurrentSnpCheckOperations(
-        Supplier<IgniteFuture<?>> firstOp,
-        Supplier<IgniteFuture<?>> secondOp,
+        Supplier<IgniteFuture<?>> originatorOp,
+        Supplier<IgniteFuture<?>> trierOp,
         DistributedProcess.DistributedProcessType firstDelay,
         @Nullable DistributedProcess.DistributedProcessType secondDelay,
         boolean expectFailure,
@@ -1441,17 +1441,17 @@ public class IgniteClusterSnapshotCheckTest extends AbstractSnapshotSelfTest {
                     && ((FullMessage<?>)msg).type() == firstDelay.ordinal()
                     && (waitForBothFirstDelays || firstDelayed.compareAndSet(false, true)));
 
-            IgniteFuture<?> fut = firstOp.get();
+            IgniteFuture<?> fut = originatorOp.get();
 
             discoSpi(grid(0)).waitBlocked(getTestTimeout());
 
-            IgniteFuture<?> fut2 = secondOp.get();
+            IgniteFuture<?> fut2 = trierOp.get();
 
             if (expectFailure) {
                 assertThrowsAnyCause(
                     log,
                     fut2::get,
-                    IgniteIllegalStateException.class,
+                    IllegalStateException.class,
                     "Validation of snapshot '" + SNAPSHOT_NAME + "' has already started"
                 );
 
@@ -1474,7 +1474,7 @@ public class IgniteClusterSnapshotCheckTest extends AbstractSnapshotSelfTest {
                 assertThrowsAnyCause(
                     log,
                     fut2::get,
-                    IgniteIllegalStateException.class,
+                    IllegalStateException.class,
                     "Validation of snapshot '" + SNAPSHOT_NAME + "' has already started"
                 );
 

@@ -314,29 +314,13 @@ control.bat --snapshot list --src /tmp/ignite/snapshots
 ----
 --
 
-=== Output format
-
-The command output displays per-node information:
-
-[source,text]
-----
-Node consistent-id [node-uuid]:
-  snapshot_name: <size>
-  snapshot_name: CREATING (DELETING)
-----
-
-Where:
-
-* `<size>` - human-readable size of the snapshot on disk (e.g., `1.5 GB`).
-* `CREATING` - the snapshot is in the process of being created on this node. The size is not calculated.
-
 === List operation notes
 
 * The list operation is read-only and does not modify any snapshot data.
 * If a snapshot is in a transient state (being created or deleted), its size is not reported.
 * Snapshot is being detected by its metadata. If metadata is missing or cannot be read, snapshot directory is ignored.
-* When snapshot listing and size calculating, no additional snapshot validation is done. Files, its' headers aren't read,
-no checksums are calculated, etc.
+* When snapshot listing and size calculating, no additional snapshot validation is done. Files aren't read, no checksums
+are calculated.
 
 == Getting Snapshot Operation Status
 

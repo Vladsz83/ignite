@@ -99,7 +99,7 @@ public final class HintUtils {
 
     /**
      * @return Distinct hints within {@code hints} filtered with {@code hintDefs}, {@link HintOptionsChecker} and
-     * removed inherit paths.
+     * removed inherit pathes.
      * @see HintOptionsChecker
      * @see RelHint#inheritPath
      */
