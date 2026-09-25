@@ -99,7 +99,7 @@ public class GridCommandHandlerListSnapshotTest extends GridCommandHandlerAbstra
 
     /** */
     @Test
-    public void testSnapshotList() throws Exception {
+    public void testSnapshotListSingleSnapshot() throws Exception {
         // A custom snapshot path actually puts snapshots in a shared directory. This skews the results when dedicated
         // work directories are set.
         assumeTrue(!customPath || !separatedWorkDir);

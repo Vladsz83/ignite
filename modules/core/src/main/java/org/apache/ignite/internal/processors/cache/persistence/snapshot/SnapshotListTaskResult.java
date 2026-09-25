@@ -17,16 +17,88 @@
 
 package org.apache.ignite.internal.processors.cache.persistence.snapshot;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.apache.ignite.internal.Order;
 import org.apache.ignite.internal.dto.IgniteDataTransferObject;
-import org.apache.ignite.plugin.extensions.communication.MessageFactory;
+import org.apache.ignite.internal.management.snapshot.SnapshotListTask;
 
-/** Result of {@link SnapshotListTaskResult}. */
+/** Accumulated result of {@link SnapshotListTask}. */
 public final class SnapshotListTaskResult extends IgniteDataTransferObject {
     /** Serial version uid. */
     private static final long serialVersionUID = 0L;
 
-    /** Default constructor for serialization porposes. */
+    /** Lists of snapshots per node. */
+    @Order(0)
+    Map<UUID, List<SnapshotData>> nodesResults = new HashMap<>();
+
+    /** Default constructor for serialization purposes. */
     public SnapshotListTaskResult() {
         // No-op.
+    }
+
+    /** */
+    public void add(UUID nodeId, String snpName, long size, long creationTime) {
+        nodesResults.compute(nodeId, (nid, nodeSnps) -> {
+            if(nodeSnps == null)
+                nodeSnps = new ArrayList<>();
+
+            nodeSnps.add(new SnapshotData(snpName, size, creationTime));
+
+            return nodeSnps;
+        });
+    }
+
+    /** */
+    public void compose(SnapshotListTaskResult other) {
+        nodesResults.putAll(other.nodesResults);
+    }
+
+    /** */
+    public static class SnapshotData extends IgniteDataTransferObject {
+        /** Serial version uid. */
+        private static final long serialVersionUID = 0L;
+
+        /** */
+        @Order(0)
+        String name;
+
+        /** */
+        @Order(1)
+        long size;
+
+        /** */
+        @Order(2)
+        long creationTime;
+
+        /** Empty constructor for serialization purposes. */
+        public SnapshotData() {
+            // No-op.
+        }
+
+        /** */
+        private SnapshotData(String name, long size, long creationTime) {
+            this.name = name;
+            this.size = size;
+            this.creationTime = creationTime;
+        }
+
+        /** */
+        public String name() {
+            return name;
+        }
+
+        /** */
+        public long size() {
+            return size;
+        }
+
+        /** */
+        public long creationTime() {
+            return creationTime;
+        }
     }
 }
