@@ -98,7 +98,6 @@ import org.apache.ignite.lang.IgniteFuture;
 import org.apache.ignite.lang.IgniteFutureCancelledException;
 import org.apache.ignite.lang.IgniteFutureTimeoutException;
 import org.apache.ignite.lang.IgnitePredicate;
-import org.apache.ignite.plugin.AbstractTestPluginProvider;
 import org.apache.ignite.spi.discovery.DiscoverySpiCustomMessage;
 import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
 import org.apache.ignite.spi.discovery.tcp.TestTcpDiscoverySpi;
@@ -174,12 +173,6 @@ public abstract class AbstractSnapshotSelfTest extends GridCommonAbstractTest {
         return valBuilder;
     }
 
-    /** */
-    protected @Nullable AbstractTestPluginProvider pluginProvider;
-
-    /** */
-    protected boolean fullCleanPersistentDir = true;
-
     /** Enable encryption of all caches in {@code IgniteConfiguration} before start. */
     @Parameterized.Parameter
     public boolean encryption;
@@ -189,7 +182,7 @@ public abstract class AbstractSnapshotSelfTest extends GridCommonAbstractTest {
     public boolean onlyPrimary;
 
     /** Parameters. */
-    @Parameterized.Parameters(name = "encryption={0}, onlyPrimary={1}")
+    @Parameterized.Parameters(name = "encryption={0}, onlyPrimay={1}")
     public static Collection<Object[]> params() {
         List<Object[]> res = new ArrayList<>();
 
@@ -223,9 +216,6 @@ public abstract class AbstractSnapshotSelfTest extends GridCommonAbstractTest {
 
         if (cfg.isClientMode())
             return cfg;
-
-        if (pluginProvider != null)
-            cfg.setPluginProviders(pluginProvider);
 
         return cfg.setConsistentId(igniteInstanceName)
             .setDataStorageConfiguration(new DataStorageConfiguration()
@@ -291,25 +281,6 @@ public abstract class AbstractSnapshotSelfTest extends GridCommonAbstractTest {
         }
 
         cleanPersistenceDir();
-    }
-
-    /** {@inheritDoc} */
-    @Override protected void cleanPersistenceDir() throws Exception {
-        super.cleanPersistenceDir();
-
-        if (!fullCleanPersistentDir())
-            return;
-
-        // Clean all: also separated snapshot working directories and custom snapshot paths.
-        try (DirectoryStream<Path> files = newDirectoryStream(Paths.get(U.defaultWorkDirectory()))) {
-            for (Path path : files)
-                U.delete(path);
-        }
-    }
-
-    /** */
-    protected boolean fullCleanPersistentDir() {
-        return fullCleanPersistentDir;
     }
 
     /**

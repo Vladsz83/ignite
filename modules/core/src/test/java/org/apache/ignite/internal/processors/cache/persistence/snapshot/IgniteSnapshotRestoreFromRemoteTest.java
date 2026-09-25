@@ -127,11 +127,6 @@ public class IgniteSnapshotRestoreFromRemoteTest extends IgniteClusterSnapshotRe
         return cfg;
     }
 
-    /** {@inheritDoc} */
-    @Override protected boolean fullCleanPersistentDir() {
-        return false;
-    }
-
     /** @throws Exception If fails. */
     @Before
     public void prepareDedicatedSnapshot() throws Exception {

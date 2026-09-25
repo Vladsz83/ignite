@@ -34,6 +34,7 @@ import org.apache.ignite.util.GridCommandHandlerIndexingClusterByClassWithSSLTes
 import org.apache.ignite.util.GridCommandHandlerIndexingTest;
 import org.apache.ignite.util.GridCommandHandlerIndexingWithSSLTest;
 import org.apache.ignite.util.GridCommandHandlerLegacyClientTest;
+import org.apache.ignite.util.GridCommandHandlerListSnapshotTest;
 import org.apache.ignite.util.GridCommandHandlerManagementPoolTest;
 import org.apache.ignite.util.GridCommandHandlerMetadataTest;
 import org.apache.ignite.util.GridCommandHandlerSslTest;
@@ -74,6 +75,7 @@ import org.junit.runners.Suite;
     GridCommandHandlerCheckIndexesInlineSizeTest.class,
     GridCommandHandlerMetadataTest.class,
     GridCommandHandlerCheckIncrementalSnapshotTest.class,
+    GridCommandHandlerListSnapshotTest.class,
     GridCommandHandlerLegacyClientTest.class,
 
     KillCommandsControlShTest.class,

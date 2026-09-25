@@ -344,9 +344,6 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
     /** Snapshot validation distributed process. */
     private final SnapshotCheckProcess checkSnpProc;
 
-    /** Distributed process to list cluster snapshots. */
-    private final SnapshotListProcess listSnpProc;
-
     /** Check previously performed snapshot operation and delete uncompleted files if we need. */
     private final DistributedProcess<SnapshotOperationEndRequest, SnapshotOperationResponse> endSnpProc;
 
@@ -448,8 +445,6 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
         restoreCacheGrpProc = new SnapshotRestoreProcess(ctx, locBuff);
 
         checkSnpProc = new SnapshotCheckProcess(ctx);
-
-        listSnpProc = new SnapshotListProcess(ctx);
 
         // Manage remote snapshots.
         snpRmtMgr = new SequentialRemoteSnapshotManager();
@@ -669,7 +664,6 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
 
         restoreCacheGrpProc.interrupt(stopErr);
         checkSnpProc.interrupt(stopErr);
-        listSnpProc.interrupt(stopErr);
 
         // Try stop all snapshot processing if not yet.
         for (AbstractSnapshotFutureTask<?> sctx : locSnpTasks.values())
@@ -1450,16 +1444,6 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
      */
     public boolean isSnapshotChecking(String snpName) {
         return checkSnpProc.isSnapshotChecking(snpName);
-    }
-
-    /**
-     * Provides list of snapshots on all online server nodes.
-     *
-     * @param snpPath Snapshot directory path. If {@code null}, the default configured snapshot directory will be used.
-     * @return Future which will be completed when the snapshot list is gathered from all the online server nodes.
-     */
-    public IgniteFuture<SnapshotListProcessResult> listSnapshots(@Nullable String snpPath) {
-        return listSnpProc.start(snpPath);
     }
 
     /**

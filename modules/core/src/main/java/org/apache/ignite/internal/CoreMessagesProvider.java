@@ -165,8 +165,6 @@ import org.apache.ignite.internal.processors.cache.persistence.snapshot.Snapshot
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotFilesFailureMessage;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotFilesRequestMessage;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotHandlerResult;
-import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotListRequest;
-import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotListResponse;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotMetadata;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotMetadataResponse;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotOperationEndRequest;
@@ -439,8 +437,6 @@ public class CoreMessagesProvider extends AbstractMessageFactoryProvider {
         register(SnapshotFilesFailureMessage.class);
         register(IncrementalSnapshotVerifyResult.class);
         register(IncrementalSnapshotAwareMessage.class);
-        register(SnapshotListRequest.class);
-        register(SnapshotListResponse.class);
 
         // [6300 - 6400]: Services messages. Most of them originally come from Discovery.
         msgIdx = 6300;
