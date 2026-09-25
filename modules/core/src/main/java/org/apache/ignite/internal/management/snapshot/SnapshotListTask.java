@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.management.snapshot;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -25,55 +26,81 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.apache.ignite.IgniteException;
+import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.compute.ComputeJobResult;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.IgniteSnapshotManager;
+import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotListJobResult;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotListTaskResult;
 import org.apache.ignite.internal.processors.task.GridInternal;
 import org.apache.ignite.internal.util.typedef.T2;
 import org.apache.ignite.internal.visor.VisorJob;
 import org.apache.ignite.internal.visor.VisorMultiNodeTask;
+import org.apache.ignite.internal.visor.VisorTaskArgument;
 import org.jetbrains.annotations.Nullable;
 
 /** */
 @GridInternal
-public class SnapshotListTask extends VisorMultiNodeTask<SnapshotListCommandArg, SnapshotListTaskResult, SnapshotListTaskResult> {
+public class SnapshotListTask extends VisorMultiNodeTask<SnapshotListCommandArg, SnapshotListTaskResult, SnapshotListJobResult> {
     /** Serial version uid. */
     private static final long serialVersionUID = 0L;
 
     /** {@inheritDoc} */
-    @Override protected VisorJob<SnapshotListCommandArg, SnapshotListTaskResult> job(SnapshotListCommandArg arg) {
+    @Override protected VisorJob<SnapshotListCommandArg, SnapshotListJobResult> job(SnapshotListCommandArg arg) {
         return new SnapshotListJob(arg, debug);
     }
 
     /** {@inheritDoc} */
-    @Override protected SnapshotListTaskResult reduce0(List<ComputeJobResult> nodesJobsResults) throws IgniteException {
-        SnapshotListTaskResult taskResult = new SnapshotListTaskResult();
+    @Override protected Collection<UUID> jobNodes(VisorTaskArgument<SnapshotListCommandArg> arg) {
+        /** Allows {@link #map0(List, VisorTaskArgument)} to use the entire subgrid. */
+        return ignite.cluster().forServers().nodes().stream().map(ClusterNode::id).collect(Collectors.toList());
+    }
 
-        for (ComputeJobResult nodeJobRes : nodesJobsResults) {
+    /** {@inheritDoc} */
+    @Override protected SnapshotListTaskResult reduce0(List<ComputeJobResult> nodesJobsResults) throws IgniteException {
+        String[] cstIds = new String[nodesJobsResults.size()];
+        UUID[] nodesIds = new UUID[nodesJobsResults.size()];
+        SnapshotListJobResult[] nodesResults = new SnapshotListJobResult[nodesJobsResults.size()];
+
+        for (int i = 0; i < nodesJobsResults.size(); i++) {
+            ComputeJobResult nodeJobRes = nodesJobsResults.get(i);
+
             if (nodeJobRes.getException() != null) {
                 throw new IgniteException("Failed to execute snapshot list job on node [uuid=" + nodeJobRes.getNode().id() + ']',
                     nodeJobRes.getException());
             }
 
-            // Clients provide no data.
-            if (nodeJobRes.getData() == null)
-                continue;
+            assert nodeJobRes.getData() != null;
 
-            taskResult.compose(nodeJobRes.getData());
+            cstIds[i] = nodeConsistentId(nodeJobRes.getNode().id());
+            nodesIds[i] = nodeJobRes.getNode().id();
+            nodesResults[i] = nodeJobRes.getData();
         }
 
-        return taskResult;
+        return new SnapshotListTaskResult(cstIds, nodesIds, nodesResults);
+    }
+
+    /** */
+    private String nodeConsistentId(UUID id) {
+        ClusterNode n = ignite.context().discovery().node(id);
+
+        if (n == null)
+            n = ignite.context().discovery().historicalNode(id);
+
+        return n == null ? "" : n.consistentId().toString();
     }
 
     /**
-     * Walk though a directory. Doesn't lock it. Tries to find files and summarize their size.
-     * Tolerates and skips access errors (permission denied, concurrent deletion).
+     * Walk though a directory. Doesn't lock it or its content. Tries to find files and summarize their size.
+     * Tolerates and skips concurrent deletion errors.
      */
-    public static T2<Long, FileTime> calculateDirectorySizeVisitor(File path) throws IOException {
+    public static T2<Long, FileTime> calculateDirectorySize(File path) throws IOException {
         AtomicLong totalSize = new AtomicLong(0);
 
         AtomicReference<FileTime> createTime = new AtomicReference<>();
@@ -86,32 +113,27 @@ public class SnapshotListTask extends VisorMultiNodeTask<SnapshotListCommandArg,
             }
 
             @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                try {
-                    // Use attrs instead of Files.size() for efficiency.
-                    if (attrs.isRegularFile())
-                        totalSize.addAndGet(attrs.size());
-                }
-                catch (Exception ignored) {
-                    // No-op: file may have been deleted between walk start and here.
-                }
+                // Use attrs instead of Files.size() for efficiency.
+                if (attrs.isRegularFile())
+                    totalSize.addAndGet(attrs.size());
 
                 return FileVisitResult.CONTINUE;
             }
 
             /** File/directory became inaccessible (permission denied, deleted, etc.) */
             @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                return FileVisitResult.CONTINUE;
+                if(exc instanceof FileNotFoundException)
+                    return FileVisitResult.CONTINUE;
+
+                throw new IgniteException("Failed to calculate snapshot size [name=" + path.getName() + ']', exc);
             }
         });
 
         return new T2<>(totalSize.get(), createTime.get());
     }
 
-    /**
-     * Per-node job for {@link SnapshotListTask}. Uses the same {@link SnapshotListTaskResult} but only with the local
-     * node data. Clients return {@code null}.
-     */
-    private static class SnapshotListJob extends SnapshotJob<SnapshotListCommandArg, SnapshotListTaskResult> {
+    /** */
+    private static class SnapshotListJob extends SnapshotJob<SnapshotListCommandArg, SnapshotListJobResult> {
         /** Serial version uid. */
         private static final long serialVersionUID = 0L;
 
@@ -124,30 +146,42 @@ public class SnapshotListTask extends VisorMultiNodeTask<SnapshotListCommandArg,
         }
 
         /** {@inheritDoc} */
-        @Override protected @Nullable SnapshotListTaskResult run(SnapshotListCommandArg arg) {
-            if (ignite.localNode().isClient())
-                return null;
+        @Override protected SnapshotListJobResult run(SnapshotListCommandArg arg) {
+            assert !ignite.localNode().isClient();
 
             IgniteSnapshotManager snpMgr = ignite.context().cache().context().snapshotMgr();
 
-            SnapshotListTaskResult jobRes = new SnapshotListTaskResult();
+            String[] snpNames;
+            long[] sizes;
+            long[] creationTimes;
 
             try {
                 File resolvedPath = resolveSnapshotsPath(arg.src());
 
-                for (String snpName : snpMgr.localSnapshotNames(resolvedPath.getAbsolutePath())) {
+                List<String> locSnps = snpMgr.localSnapshotNames(resolvedPath.getAbsolutePath());
+
+                snpNames = new String[locSnps.size()];
+                sizes = new long[locSnps.size()];
+                creationTimes = new long[locSnps.size()];
+
+                for (int s = 0; s < locSnps.size(); s++) {
+                    String snpName = locSnps.get(s);
+
+                    snpNames[s] = snpName;
+
                     File snpPath = new File(resolvedPath, snpName);
 
-                    T2<Long, FileTime> snpRes = calculateDirectorySizeVisitor(snpPath);
+                    T2<Long, FileTime> snpRes = calculateDirectorySize(snpPath);
 
-                    // TODO: check time conversion.
-                    jobRes.add(ignite.localNode().id(), snpName, snpRes.get1(), snpRes.get2().toInstant().getEpochSecond());
+                    sizes[s] = snpRes.get1();
+                    // TODO: check the time conversion.
+                    creationTimes[s] = snpRes.get2().toInstant().getEpochSecond();
                 }
             } catch (Exception e) {
                 throw new IgniteException("Failed to list local snapshots [src=" + arg.src() + ']', e);
             }
 
-            return jobRes;
+            return new SnapshotListJobResult(snpNames, sizes, creationTimes);
         }
 
         /** TODO: move to a sahred with the deletion process place. */

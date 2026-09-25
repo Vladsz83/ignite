@@ -17,51 +17,51 @@
 
 package org.apache.ignite.internal.processors.cache.persistence.snapshot;
 
-import java.util.UUID;
 import org.apache.ignite.internal.Order;
 import org.apache.ignite.internal.dto.IgniteDataTransferObject;
 import org.apache.ignite.internal.management.snapshot.SnapshotListTask;
 
 /** Accumulated result of {@link SnapshotListTask}. */
-public final class SnapshotListTaskResult extends IgniteDataTransferObject {
+public final class SnapshotListJobResult extends IgniteDataTransferObject {
     /** Serial version uid. */
     private static final long serialVersionUID = 0L;
 
-    /** Nodes consistent ids. */
+    /** */
     @Order(0)
-    String[] cstIds;
+    String[] snpNames;
 
-    /** Nodes UUIDs. */
+    /** */
     @Order(1)
-    UUID[] nodesIds;
+    long[] sizes;
 
-    /** Results. */
+    /** */
     @Order(2)
-    SnapshotListJobResult[] snapshots;
+    long[] creationTimes;
 
     /** Default constructor for serialization purposes. */
-    public SnapshotListTaskResult() {
+    public SnapshotListJobResult() {
         // No-op.
     }
 
-    /**  */
-    public SnapshotListTaskResult(String[] cstIds, UUID[] nodesIds, SnapshotListJobResult[] snapshots) {
-        this.cstIds = cstIds;
-        this.nodesIds = nodesIds;
-        this.snapshots = snapshots;
-    }
-    /** @return Nodes consistent ids. */
-    public String[] consistentIds() {
-        return cstIds;
+    /** */
+    public SnapshotListJobResult(String[] snpNames, long[] sizes, long[] creationTimes) {
+        this.snpNames = snpNames;
+        this.sizes = sizes;
+        this.creationTimes = creationTimes;
     }
 
-    /** @return Nodes UUIDs. */
-    public UUID[] nodesIds() {
-        return nodesIds;
+    /** */
+    public String[] snapshotNames() {
+        return snpNames;
     }
 
-    /** @return The results. */
-    public SnapshotListJobResult[] snapshots() {
-        return snapshots;
+    /** */
+    public long[] sizes() {
+        return sizes;
+    }
+
+    /** */
+    public long[] creationTimes() {
+        return creationTimes;
     }
 }

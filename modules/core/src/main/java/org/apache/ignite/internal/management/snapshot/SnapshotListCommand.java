@@ -17,7 +17,10 @@
 
 package org.apache.ignite.internal.management.snapshot;
 
+import java.sql.Date;
+import java.time.Instant;
 import java.util.function.Consumer;
+import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotListJobResult;
 import org.apache.ignite.internal.processors.cache.persistence.snapshot.SnapshotListTaskResult;
 import org.apache.ignite.internal.util.typedef.internal.U;
 
@@ -51,6 +54,28 @@ public class SnapshotListCommand extends AbstractSnapshotCommand<SnapshotListCom
 
     /** {@inheritDoc} */
     @Override public void printResult(SnapshotListCommandArg arg, SnapshotListTaskResult res, Consumer<String> printer) {
-        printer.accept(U.nl());
+        printer.accept("The following snapshots are found:");
+        printer.accept("");
+
+        for (int n = 0; n < res.nodesIds().length; n++) {
+            printer.accept("\tNode '%s' [uuid=%s]:".formatted(res.consistentIds()[n], res.nodesIds()[n]));
+
+            SnapshotListJobResult nodeSnps = res.snapshots()[n];
+
+            for (int s = 0; s < nodeSnps.snapshotNames().length; s++) {
+                String name = nodeSnps.snapshotNames()[s];
+                long size = nodeSnps.sizes()[s];
+                long epochTime = nodeSnps.creationTimes()[s];
+
+                printer.accept("\t\tSnapshot '%s' [size=%s, created=%s (epochTime=%d)]".formatted(
+                    name,
+                    U.humanReadableByteCount(size),
+                    Date.from(Instant.ofEpochSecond(epochTime)).toString(),
+                    epochTime
+                ));
+
+                printer.accept("");
+            }
+        }
     }
 }

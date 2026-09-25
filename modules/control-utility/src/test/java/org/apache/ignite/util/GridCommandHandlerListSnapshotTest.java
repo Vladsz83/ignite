@@ -22,6 +22,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
+import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteDataStreamer;
 import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteEx;
@@ -108,6 +109,8 @@ public class GridCommandHandlerListSnapshotTest extends GridCommandHandlerAbstra
         int initNodes = 3;
 
         IgniteEx ig = (IgniteEx)startGridsMultiThreaded(initNodes);
+
+        startGrid(CLIENT_NODE_NAME_PREFIX);
 
         ig.cluster().state(ACTIVE);
 
