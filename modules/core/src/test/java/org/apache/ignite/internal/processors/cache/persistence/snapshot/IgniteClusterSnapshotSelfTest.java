@@ -1231,6 +1231,32 @@ public class IgniteClusterSnapshotSelfTest extends AbstractSnapshotSelfTest {
         assertSnapshotCacheKeys(snp.cache(dfltCacheCfg.getName()));
     }
 
+    /** Test creation snapshot within Ignite db's folder. */
+    @Test
+    public void testCreationInIgniteDirectory() throws Exception {
+        startGridsWithCache(3, dfltCacheCfg, CACHE_KEYS_RANGE);
+
+        String path = grid(0).context().pdsFolderResolver().fileTree().db().getAbsolutePath();
+
+        // Should fail (deny the creation).
+        snp(grid(0)).createSnapshot(SNAPSHOT_NAME, path, false, false).get(getTestTimeout());
+
+        // Should not be created.
+        assertFalse(new File(grid(0).context().pdsFolderResolver().fileTree().db(), SNAPSHOT_NAME).exists());
+    }
+
+    /** Test that default snapshot path creates snapshot in the default snapshots root. */
+    @Test
+    public void testDefaultSnapshotPath() throws Exception {
+        startGridsWithCache(3, dfltCacheCfg, CACHE_KEYS_RANGE);
+
+        // Should fail (deny the creation).
+        snp(grid(0)).createSnapshot(SNAPSHOT_NAME).get(getTestTimeout());
+
+        // Should exists.
+        assertTrue(new File(grid(0).context().pdsFolderResolver().fileTree().snapshotsRoot(), SNAPSHOT_NAME).exists());
+    }
+
     /** @throws Exception If fails. */
     @Test
     public void testConcurrentClusterSnapshotFromClient() throws Exception {
