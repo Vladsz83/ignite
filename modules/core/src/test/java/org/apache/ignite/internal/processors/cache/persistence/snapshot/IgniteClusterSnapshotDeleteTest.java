@@ -591,27 +591,14 @@ public class IgniteClusterSnapshotDeleteTest extends AbstractSnapshotSelfTest {
         assertTrue(delRes.completedNodes().containsKey(grid(1).localNode().id()));
     }
 
-    /** Tests that a concurrent deletion of a snapshot with the same name but different name characters case is allowed. */
-    @Test
-    public void testConcurrentDeleteOfTheSameSnapshotDifferentNameCharactersCase() throws Exception {
-        assumeFalse(caseInsensitiveFs);
-
-        doTestConcurrentDeleteOfTheSameSnapshotDifferentPath(true);
-    }
-
     /** Tests that a concurrent deletion of a snapshot with the same name but different path is allowed. */
     @Test
     public void testConcurrentDeleteOfTheSameSnapshotDifferentPath() throws Exception {
-        doTestConcurrentDeleteOfTheSameSnapshotDifferentPath(false);
+        doTestConcurrentDeleteOfTheSameSnapshotDifferentPath();
     }
 
-    /**
-     * Tests that a concurrent deletion of a snapshot with the same name but different path is allowed.
-     *
-     * @param useNameCharactersCase If {@code true}, uses a changed characters case of snapshot name as the other snapshot path.
-     *                              If {@code false}, uses different snapshot root path.
-     */
-    private void doTestConcurrentDeleteOfTheSameSnapshotDifferentPath(boolean useNameCharactersCase) throws Exception {
+    /** Tests that a concurrent deletion of a snapshot with the same name but different path is allowed. */
+    private void doTestConcurrentDeleteOfTheSameSnapshotDifferentPath() throws Exception {
         startGridsWithCache(3, CACHE_KEYS_RANGE, i -> i, dfltCacheCfg);
 
         snp(grid(0)).createSnapshot(SNAPSHOT_NAME, null, false, onlyPrimary).get(TIMEOUT);
@@ -619,18 +606,12 @@ public class IgniteClusterSnapshotDeleteTest extends AbstractSnapshotSelfTest {
         if (incremental)
             addIncrementalSnapshot(SNAPSHOT_NAME, null);
 
-        String secondSnpPath = null;
-        String secondSnpName = SNAPSHOT_NAME.toLowerCase();
+        String secondSnpPath = new File(grid(0).context().pdsFolderResolver().fileTree().snapshotsRoot(), "ex_snapshots").getAbsolutePath();
 
-        if (!useNameCharactersCase) {
-            secondSnpPath = new File(grid(0).context().pdsFolderResolver().fileTree().snapshotsRoot(), "ex_snapshots").getAbsolutePath();
-            secondSnpName = SNAPSHOT_NAME;
-        }
-
-        snp(grid(0)).createSnapshot(secondSnpName, secondSnpPath, false, onlyPrimary).get(getTestTimeout());
+        snp(grid(0)).createSnapshot(SNAPSHOT_NAME, secondSnpPath, false, onlyPrimary).get(getTestTimeout());
 
         if (incremental)
-            addIncrementalSnapshot(secondSnpName, secondSnpPath);
+            addIncrementalSnapshot(SNAPSHOT_NAME, secondSnpPath);
 
         TestRecordingCommunicationSpi commSpi1 = (TestRecordingCommunicationSpi)grid(1).configuration().getCommunicationSpi();
 
@@ -638,7 +619,7 @@ public class IgniteClusterSnapshotDeleteTest extends AbstractSnapshotSelfTest {
             msg instanceof SingleNodeMessage<?> msg0 && msg0.type() == DELETE_SNAPSHOT.ordinal());
 
         IgniteInternalFuture<SnapshotDeleteProcessResult> delFut0 = snp(grid(0)).deleteSnapshot(SNAPSHOT_NAME, null);
-        IgniteInternalFuture<SnapshotDeleteProcessResult> delFut1 = snp(grid(1)).deleteSnapshot(secondSnpName, secondSnpPath);
+        IgniteInternalFuture<SnapshotDeleteProcessResult> delFut1 = snp(grid(1)).deleteSnapshot(SNAPSHOT_NAME, secondSnpPath);
 
         commSpi1.waitForBlocked(2, getTestTimeout());
 
@@ -657,11 +638,9 @@ public class IgniteClusterSnapshotDeleteTest extends AbstractSnapshotSelfTest {
         // Doesn't matter here.
         assumeFalse(onlyPrimary || incremental);
 
-        String snapshotName = caseInsensitiveFs ? SNAPSHOT_NAME.toLowerCase() : SNAPSHOT_NAME;
-
         doConcurrentSnapshotOperationWhenDeletionIsActive(
             () -> startGridsWithSnapshot(3, CACHE_KEYS_RANGE, false, true),
-            () -> snp(grid(1)).deleteSnapshot(snapshotName, null).get(getTestTimeout()),
+            () -> snp(grid(1)).deleteSnapshot(SNAPSHOT_NAME, null).get(getTestTimeout()),
             e -> e.getMessage().contains("Deletion of the snapshot has already started"),
             false
         );
@@ -674,10 +653,8 @@ public class IgniteClusterSnapshotDeleteTest extends AbstractSnapshotSelfTest {
      */
     @Test
     public void testSnapshotDeleteWhenCheckInProgress() throws Exception {
-        String firstOpSnpName = caseInsensitiveFs ? SNAPSHOT_NAME.toLowerCase() : SNAPSHOT_NAME;
-
         SnapshotPartitionsVerifyResult res = doTestConcurrentSnapshotDelete(
-            () -> new IgniteFutureImpl<>(snp(grid(2)).checkSnapshot(firstOpSnpName, null, incremental ? 1 : 0)),
+            () -> new IgniteFutureImpl<>(snp(grid(2)).checkSnapshot(SNAPSHOT_NAME, null, incremental ? 1 : 0)),
             F.asList(CHECK_SNAPSHOT_METAS),
             true,
             null,
@@ -693,17 +670,15 @@ public class IgniteClusterSnapshotDeleteTest extends AbstractSnapshotSelfTest {
     /** Tests that a snapshot deletion is declined when a snapshot create operation is in progress.*/
     @Test
     public void testSnapshotDeleteWhenCreateInProgress() throws Exception {
-        String firstOpSnpName = caseInsensitiveFs ? SNAPSHOT_NAME.toLowerCase() : SNAPSHOT_NAME;
-
         doTestConcurrentSnapshotDelete(
-            () -> snp(grid(0)).createSnapshot(firstOpSnpName, null, incremental, onlyPrimary),
+            () -> snp(grid(0)).createSnapshot(SNAPSHOT_NAME, null, incremental, onlyPrimary),
             F.asList(START_SNAPSHOT, END_SNAPSHOT),
             false,
             () -> {
-                new IgniteFutureImpl<>(snp(grid(0)).deleteSnapshot(firstOpSnpName, null)).get(getTestTimeout());
+                new IgniteFutureImpl<>(snp(grid(0)).deleteSnapshot(SNAPSHOT_NAME, null)).get(getTestTimeout());
 
                 if (incremental)
-                    snp(grid(0)).createSnapshot(firstOpSnpName).get(getTestTimeout());
+                    snp(grid(0)).createSnapshot(SNAPSHOT_NAME).get(getTestTimeout());
             },
             "Snapshot with the same name is being created",
             false,
@@ -714,14 +689,12 @@ public class IgniteClusterSnapshotDeleteTest extends AbstractSnapshotSelfTest {
     /** Tests that a snapshot deletion is declined when a snapshot restore begins. */
     @Test
     public void testSnapshotDeleteWhenRestoreBegins() throws Exception {
-        String firstOpSnpName = caseInsensitiveFs ? SNAPSHOT_NAME.toLowerCase() : SNAPSHOT_NAME;
-
         doTestConcurrentSnapshotDelete(
             () -> {
                 if (incremental)
-                    return snp(grid(2)).restoreSnapshot(firstOpSnpName, null, 1);
+                    return snp(grid(2)).restoreSnapshot(SNAPSHOT_NAME, null, 1);
                 else
-                    return snp(grid(2)).restoreSnapshot(firstOpSnpName, null);
+                    return snp(grid(2)).restoreSnapshot(SNAPSHOT_NAME, null);
             },
             F.asList(CHECK_SNAPSHOT_METAS, CHECK_SNAPSHOT_PARTS),
             true,
@@ -739,8 +712,6 @@ public class IgniteClusterSnapshotDeleteTest extends AbstractSnapshotSelfTest {
     /** Tests that a snapshot deletion is declined when a snapshot restore is in progress. */
     @Test
     public void testSnapshotDeleteWhenRestoreInProgress() throws Exception {
-        String firstOpSnpName = caseInsensitiveFs ? SNAPSHOT_NAME.toLowerCase() : SNAPSHOT_NAME;
-
         var restoreMsgs = F.asList(
             RESTORE_CACHE_GROUP_SNAPSHOT_PREPARE,
             RESTORE_CACHE_GROUP_SNAPSHOT_START
@@ -754,9 +725,9 @@ public class IgniteClusterSnapshotDeleteTest extends AbstractSnapshotSelfTest {
         doTestConcurrentSnapshotDelete(
             () -> {
                 if (incremental)
-                    return snp(grid(2)).restoreSnapshot(firstOpSnpName, null, 1);
+                    return snp(grid(2)).restoreSnapshot(SNAPSHOT_NAME, null, 1);
                 else
-                    return snp(grid(2)).restoreSnapshot(firstOpSnpName, null);
+                    return snp(grid(2)).restoreSnapshot(SNAPSHOT_NAME, null);
             },
             restoreMsgs,
             true,

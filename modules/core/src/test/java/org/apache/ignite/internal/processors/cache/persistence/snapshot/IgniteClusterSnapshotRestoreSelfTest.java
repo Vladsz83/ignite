@@ -337,12 +337,10 @@ public class IgniteClusterSnapshotRestoreSelfTest extends IgniteClusterSnapshotR
     /** Tests that snapshot restore is declined when the same snapshot is being deleted. */
     @Test
     public void testConcurrentSnapshotDeleteAndRestoreOperations() throws Exception {
-        String snapshotName = caseInsensitiveFs ? SNAPSHOT_NAME.toLowerCase() : SNAPSHOT_NAME;
-
         doConcurrentSnapshotOperationWhenDeletionIsActive(
             () -> startGridsWithSnapshot(3, CACHE_KEYS_RANGE),
-            () -> snp(grid(2)).restoreSnapshot(snapshotName, null).get(),
-            e -> e.getMessage().contains("Delete operation of snapshot '%s' is in progress".formatted(snapshotName)),
+            () -> snp(grid(2)).restoreSnapshot(SNAPSHOT_NAME, null).get(),
+            e -> e.getMessage().contains("Delete operation of snapshot '%s' is in progress".formatted(SNAPSHOT_NAME)),
             true
         );
     }
