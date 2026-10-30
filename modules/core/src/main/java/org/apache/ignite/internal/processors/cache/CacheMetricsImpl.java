@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteSystemProperties;
 import org.apache.ignite.cache.CacheMetrics;
 import org.apache.ignite.cluster.ClusterNode;
@@ -444,6 +445,9 @@ public class CacheMetricsImpl implements CacheMetrics {
 
         mreg.register("CacheSize", this::getCacheSize,
             "Local cache size, the number of primary copies of entries on the node.");
+
+        mreg.register("ExpiredEntriesCount", this::getExpiredEntriesCount,
+            "The number of entries that have expired on the local node but have not been removed from the cache yet.");
 
         idxRebuildKeyProcessed = mreg.longAdderMetric("IndexRebuildKeyProcessed",
             "Number of keys processed during the index rebuilding.");
@@ -1775,6 +1779,20 @@ public class CacheMetricsImpl implements CacheMetrics {
     /** {@inheritDoc} */
     @Override public int getIndexBuildPartitionsLeftCount() {
         return idxBuildPartitionsLeftCnt.value();
+    }
+
+    /**
+     * Gets the number of entries that have already expired on this node but have not been removed from the cache yet.
+     *
+     * @return The number of expired entries pending removal, or {@code -1} if not available.
+     */
+    public long getExpiredEntriesCount() {
+        try {
+            return cctx.ttl().expiredCount(U.currentTimeMillis());
+        }
+        catch (IgniteCheckedException e) {
+            return -1;
+        }
     }
 
     /** */

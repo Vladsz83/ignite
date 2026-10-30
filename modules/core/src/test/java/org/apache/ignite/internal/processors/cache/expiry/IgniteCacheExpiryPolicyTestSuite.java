@@ -59,6 +59,7 @@ import org.junit.runners.Suite;
 
     ExpiryPolicyInfoLoggingTest.class,
     PendingTreeCleaningTest.class,
+    ExpiredEntriesCountMetricTest.class,
 })
 public class IgniteCacheExpiryPolicyTestSuite {
 }

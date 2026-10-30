@@ -1047,6 +1047,16 @@ public class GridCacheOffheapManager extends IgniteCacheOffheapManagerImpl imple
     }
 
     /** {@inheritDoc} */
+    @Override public long expiredSize(long time, int cacheId) throws IgniteCheckedException {
+        long size = 0;
+
+        for (CacheDataStore store : cacheDataStores())
+            size += ((GridCacheDataStore)store).expiredSize(time, cacheId);
+
+        return size;
+    }
+
+    /** {@inheritDoc} */
     @Override public boolean hasEntriesPendingExpire(int cacheId) throws IgniteCheckedException {
         for (CacheDataStore store : cacheDataStores()) {
             if (((GridCacheDataStore)store).hasEntriesPendingExpire(cacheId))
@@ -2567,6 +2577,21 @@ public class GridCacheOffheapManager extends IgniteCacheOffheapManagerImpl imple
             CacheDataStore delegate0 = init0(true);
 
             return delegate0 == null ? 0 : pendingTree.size();
+        }
+
+        /**
+         * Gets the number of entries of the given cache that have already expired at the specified time and,
+         * therefore, have to be removed from the cache, but are not removed from the partition yet.
+         *
+         * @param time Time to compare entry expire time with.
+         * @param cacheId Cache ID. The value is used only for a shared cache group.
+         * @return Number of expired entries that are not removed yet.
+         * @throws IgniteCheckedException If failed to get number of expired entries.
+         */
+        public long expiredSize(long time, int cacheId) throws IgniteCheckedException {
+            CacheDataStore delegate0 = init0(true);
+
+            return delegate0 == null ? 0 : pendingTree.countExpired(time, cacheId);
         }
 
         /**

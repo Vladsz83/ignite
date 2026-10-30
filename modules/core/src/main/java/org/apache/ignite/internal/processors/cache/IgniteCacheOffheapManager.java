@@ -171,6 +171,17 @@ public interface IgniteCacheOffheapManager {
     public long expiredSize() throws IgniteCheckedException;
 
     /**
+     * Gets the number of entries of the given cache that have already expired at the specified time and, therefore,
+     * have to be removed from the cache, but are not removed yet.
+     *
+     * @param time Time to compare entry expire time with.
+     * @param cacheId Cache ID. The value is used only for a shared cache group.
+     * @return Number of expired entries that are not removed yet.
+     * @throws IgniteCheckedException If failed to get number of expired entries.
+     */
+    public long expiredSize(long time, int cacheId) throws IgniteCheckedException;
+
+    /**
      * Checks if the cache has entries pending expire.
      *
      * @return {@code True} if there are entries pending expire.

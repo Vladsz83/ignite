@@ -24,6 +24,7 @@ import org.apache.ignite.internal.processors.cache.persistence.diagnostic.pagelo
 import org.apache.ignite.internal.processors.cache.persistence.tree.BPlusTree;
 import org.apache.ignite.internal.processors.cache.persistence.tree.io.BPlusIO;
 import org.apache.ignite.internal.processors.cache.persistence.tree.reuse.ReuseList;
+import org.apache.ignite.internal.util.lang.GridCursor;
 import org.apache.ignite.internal.util.typedef.internal.CU;
 
 /**
@@ -131,6 +132,30 @@ public class PendingEntriesTree extends BPlusTree<PendingRow, PendingRow> {
         return removex(lower, upper, WITHOUT_KEY, limit);
     }
 
+    /**
+     * Counts entries of the given cache that have already expired at the specified time and, therefore, have to be
+     * removed from the cache. Note that only entries that are pending removal are stored in the tree, so the
+     * complexity of the operation is proportional to the number of expired entries, not to the whole cache size.
+     *
+     * @param time Time to compare entry expire time with.
+     * @param cacheId Cache ID to count entries of. The value is used only for a shared cache group.
+     * @return Number of expired entries that are not removed yet.
+     * @throws IgniteCheckedException If failed.
+     */
+    public long countExpired(long time, int cacheId) throws IgniteCheckedException {
+        GridCursor<PendingRow> cur = find(
+            new PendingRow(cacheId, Long.MIN_VALUE, 0),
+            new PendingRow(cacheId, time, 0),
+            WITHOUT_KEY
+        );
+
+        long cnt = 0;
+
+        while (cur.next())
+            cnt++;
+
+        return cnt;
+    }
 
     /** {@inheritDoc} */
     @Override public PendingRow getRow(BPlusIO<PendingRow> io, long pageAddr, int idx, Object flag)

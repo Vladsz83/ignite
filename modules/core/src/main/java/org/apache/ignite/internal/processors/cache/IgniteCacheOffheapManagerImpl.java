@@ -1190,6 +1190,11 @@ public class IgniteCacheOffheapManagerImpl implements IgniteCacheOffheapManager 
     }
 
     /** {@inheritDoc} */
+    @Override public long expiredSize(long time, int cacheId) throws IgniteCheckedException {
+        return pendingEntries != null ? pendingEntries.countExpired(time, cacheId) : 0;
+    }
+
+    /** {@inheritDoc} */
     @Override public boolean hasEntriesPendingExpire(int cacheId) throws IgniteCheckedException {
         if (pendingEntries == null)
             return false;

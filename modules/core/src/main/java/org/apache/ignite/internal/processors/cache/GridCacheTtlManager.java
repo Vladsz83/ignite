@@ -168,6 +168,24 @@ public class GridCacheTtlManager extends GridCacheManagerAdapter {
     }
 
     /**
+     * Gets the number of entries that have already expired at the specified time and, therefore, have to be removed
+     * from the cache, but are not removed yet.
+     *
+     * @param time Time to compare entry expire time with.
+     * @return Number of expired entries that are not removed yet.
+     * @throws IgniteCheckedException If failed.
+     */
+    public long expiredCount(long time) throws IgniteCheckedException {
+        // Near cache entries are tracked by the near cache TTL manager only.
+        long cnt = pendingEntries != null ? pendingEntries.expiredCount(time) : 0;
+
+        if (!cctx.isNear())
+            cnt += cctx.offheap().expiredSize(time, cctx.cacheId());
+
+        return cnt;
+    }
+
+    /**
      * Updates the flag {@code hasPendingEntries} with the given value.
      *
      * @param update {@code true} if the underlying pending tree has entries with expire policy enabled.
@@ -405,6 +423,23 @@ public class GridCacheTtlManager extends GridCacheManagerAdapter {
          */
         public int sizex() {
             return size.intValue();
+        }
+
+        /**
+         * @param time Time to compare entry expire time with.
+         * @return Number of entries that have already expired at the specified time.
+         */
+        public long expiredCount(long time) {
+            long cnt = 0;
+
+            for (EntryWrapper e : this) {
+                if (e.expireTime > time)
+                    break;
+
+                cnt++;
+            }
+
+            return cnt;
         }
 
         /** {@inheritDoc} */
